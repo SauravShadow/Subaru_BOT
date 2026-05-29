@@ -116,9 +116,6 @@ class SkillLoader:
         (version_dir / "test_skill.py").write_text(test_code, encoding="utf-8")
         (skill_dir / "__init__.py").touch(exist_ok=True)
         (version_dir / "__init__.py").touch(exist_ok=True)
-        (skill_dir / "manifest.json").write_text(
-            json.dumps(manifest, indent=2), encoding="utf-8"
-        )
 
         result = subprocess.run(
             [sys.executable, "-m", "pytest", str(version_dir / "test_skill.py"),
@@ -129,6 +126,11 @@ class SkillLoader:
             raise ValueError(
                 f"Skill '{sid}' tests failed:\n{result.stdout}\n{result.stderr}"
             )
+
+        # Write manifest only after tests pass
+        (skill_dir / "manifest.json").write_text(
+            json.dumps(manifest, indent=2), encoding="utf-8"
+        )
 
         self._load_from_manifest(skill_dir / "manifest.json")
         logger.info("Skill '%s' v%s registered.", sid, version)
@@ -146,5 +148,5 @@ class SkillLoader:
         manifest["rollback_to"]    = manifest["active_version"]
         manifest["active_version"] = str(rollback_to)
         manifest_path.write_text(json.dumps(manifest, indent=2), encoding="utf-8")
-        self._load_from_manifest(manifest_path)
+        self.load_all()  # full reload to avoid stale _meta entries
         return True
