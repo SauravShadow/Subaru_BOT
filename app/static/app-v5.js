@@ -297,7 +297,13 @@ function exportChat() {
 }
 
 // ── Floating Islands ─────────────────────────────────────────────────
-function showIsland(name) { $id(`island-${name}`).style.display = "block"; }
+function showIsland(name) {
+  $id(`island-${name}`).style.display = "block";
+  if (name === "design") {
+    const iframe = $id("design-iframe");
+    if (!iframe.src || iframe.src === location.origin + "/") iframe.src = "/static/previews/index.html";
+  }
+}
 function hideIsland(name) { $id(`island-${name}`).style.display = "none"; }
 
 function initDraggableIslands() {
@@ -333,7 +339,7 @@ function boot() {
   const proto = location.protocol === "https:" ? "wss:" : "ws:";
   S.ws = new WebSocket(`${proto}//${location.host}/ws`);
   S.ws.onopen  = () => { clearTimeout(S.reconnTimer); pushNotif("Subaru online", "success"); };
-  S.ws.onmessage = ({ data }) => { try { dispatch(JSON.parse(data)); } catch {} };
+  S.ws.onmessage = ({ data }) => { try { dispatch(JSON.parse(data)); } catch(e) { console.error("dispatch error:", e); } };
   S.ws.onclose   = () => { pushNotif("Reconnecting…", "warn"); S.reconnTimer = setTimeout(boot, 3000); };
 }
 
