@@ -1,0 +1,30 @@
+services:
+  virtual-company:
+    build: .
+    container_name: virtual-company
+    user: "1000:1000"
+    ports:
+      - "3031:3030"
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    volumes:
+      # Claude Code auth + settings
+      - /home/subaru/.claude:/home/nexus/.claude
+      # Claude Code global config (at $HOME/.claude.json, not inside .claude/)
+      - /home/subaru/.claude.json:/home/nexus/.claude.json
+      # Claude binary versions — entrypoint exports CLAUDE_BIN to the latest
+      - /home/subaru/.local/share/claude:/opt/claude:ro
+      # App code mounted live: uvicorn --reload picks up self-modifications by workers
+      - /home/subaru/projects/virtual-company:/app
+      # All projects: workers can read/write any project
+      - /home/subaru/projects:/workspace
+    environment:
+      - HOME=/home/nexus
+      - WORK_DIR=/workspace
+      - USER_EMAIL=sauravsubaru@gmail.com
+      - MAX_STORAGE_GB=10
+      - GEMINI_API_KEY=${GEMINI_API_KEY:-}
+      # Optional: configure SMTP for CEO-to-user email
+      # - SMTP_USER=your@gmail.com
+      # - SMTP_PASS=your_app_password
+    restart: unless-stopped
