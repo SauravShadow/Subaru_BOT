@@ -19,6 +19,9 @@ from app.agents.tools import (
     parse_tool_call, summarize_output,
 )
 from app.state import manager as state
+from app.skills import skill_loader
+
+skill_loader.load_all()
 
 logger = logging.getLogger(__name__)
 
@@ -443,7 +446,11 @@ async def _execute_tool(
             data   = await email_svc.read_emails(max_emails=5, unread_only=True)
             result = json.dumps(data, indent=2)
         else:
-            result = f"[Unknown tool: {tool_type}]"
+            handler = skill_loader.get_tool(tool_type)
+            if handler:
+                result = await handler(tool_args)
+            else:
+                result = f"[Unknown tool: {tool_type}]"
         return str(result)
     except Exception as exc:
         return f"[Tool error: {exc}]"
