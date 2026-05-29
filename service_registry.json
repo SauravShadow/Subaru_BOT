@@ -1,0 +1,12 @@
+{
+  "expense-planner": {
+    "cwd": "/home/subaru/projects/expense-planner",
+    "cmd": "python3 -m http.server 8100",
+    "port": 8100
+  },
+  "wealthwise": {
+    "cwd": "/home/subaru/projects/wealthwise",
+    "cmd": "python3 server.py",
+    "port": 8200
+  }
+}
