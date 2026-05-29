@@ -1,0 +1,132 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="dark">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Subaru</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@400;700;900&family=Inter:wght@300;400;500;600&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="/static/style-v5.css">
+</head>
+<body>
+
+<!-- ── Header ──────────────────────────────────────────────────── -->
+<header class="hdr" id="hdr">
+  <div class="hdr-brand">
+    <span class="brand-name">SUBARU</span>
+  </div>
+  <div class="hdr-pills">
+    <div class="pill pill-backend" id="backend-pill" title="AI Backend">
+      <span class="pill-dot" id="backend-dot">●</span>
+      <span id="backend-label">Claude Sonnet</span>
+    </div>
+    <button class="pill pill-skills" id="skills-pill" title="Skills panel" onclick="toggleSkillsPanel()">
+      <span id="skills-count">0</span> Skills
+    </button>
+    <div class="pill pill-queue" id="queue-pill" style="display:none">
+      <span id="queue-count">0</span> Active
+    </div>
+    <button class="pill pill-icon" id="notif-btn" title="Notifications" onclick="toggleNotif()">🔔</button>
+  </div>
+</header>
+
+<!-- ── Arc Reactor ─────────────────────────────────────────────── -->
+<div class="reactor-wrap" id="reactor-wrap">
+  <div class="reactor" id="reactor">
+    <div class="reactor-ring reactor-ring-outer"></div>
+    <div class="reactor-ring reactor-ring-mid"></div>
+    <div class="reactor-core" id="reactor-core">
+      <span class="reactor-label">SUBARU</span>
+    </div>
+  </div>
+</div>
+
+<!-- ── Agent Orbs ──────────────────────────────────────────────── -->
+<div class="orbs-wrap" id="orbs-wrap"></div>
+
+<!-- ── Chat Thread ─────────────────────────────────────────────── -->
+<main class="chat-main" id="chat-main" style="display:none">
+  <div class="chat-thread" id="chat-thread"></div>
+</main>
+
+<!-- ── Thinking Layer ──────────────────────────────────────────── -->
+<div class="thinking-layer" id="thinking-layer" style="display:none">
+  <div class="thinking-steps" id="thinking-steps"></div>
+</div>
+
+<!-- ── Command Bar ─────────────────────────────────────────────── -->
+<div class="cmdbar-wrap">
+  <div class="cmdbar" id="cmdbar">
+    <div class="cmdbar-agent-badge" id="cmdbar-badge">CEO</div>
+    <textarea id="msg-input" class="cmdbar-input" placeholder="Ask Subaru anything..." rows="1"></textarea>
+    <label class="cmdbar-btn" title="Attach file or image" for="file-input">📎</label>
+    <input type="file" id="file-input" accept="image/*,.pdf,.csv,.txt" style="display:none" multiple>
+    <button class="cmdbar-btn" id="voice-btn" title="Voice input">🎤</button>
+    <button class="cmdbar-btn cmdbar-palette-btn" onclick="togglePalette()" title="Command palette (⌘K)">⌘</button>
+    <button class="cmdbar-btn cmdbar-send" id="send-btn" onclick="sendMsg()">▶</button>
+  </div>
+  <div class="attach-strip" id="attach-strip" style="display:none"></div>
+</div>
+
+<!-- ── Skills Panel ─────────────────────────────────────────────── -->
+<div class="skills-panel" id="skills-panel" style="display:none">
+  <div class="skills-panel-header">
+    <span>SUBARU SKILLS</span>
+    <button onclick="toggleSkillsPanel()">✕</button>
+  </div>
+  <div class="skills-section">
+    <div class="skills-section-title">⚡ INTELLIGENCE</div>
+    <div class="skills-grid" id="skills-intel">
+      <div class="skill-chip active">Claude Sonnet</div>
+      <div class="skill-chip standby">Gemini Flash</div>
+      <div class="skill-chip standby">tgpt Fallback</div>
+      <div class="skill-chip demand">Opus (on demand)</div>
+    </div>
+  </div>
+  <div class="skills-section">
+    <div class="skills-section-title">🛠 CORE TOOLS</div>
+    <div class="skills-grid" id="skills-core"></div>
+  </div>
+  <div class="skills-section">
+    <div class="skills-section-title">🧠 LEARNED SKILLS</div>
+    <div class="skills-grid" id="skills-learned">
+      <div class="skill-chip install" onclick="triggerInstallSkill()">➕ Install New</div>
+    </div>
+  </div>
+  <div class="skills-section">
+    <div class="skills-section-title">📊 TODAY</div>
+    <div class="skills-stats" id="skills-stats">
+      <div class="stat-row"><span>Active agents</span><span id="stat-agents">—</span></div>
+      <div class="stat-row"><span>Tasks queued</span><span id="stat-tasks">—</span></div>
+      <div class="stat-row"><span>Skills loaded</span><span id="stat-skills">—</span></div>
+    </div>
+  </div>
+</div>
+
+<!-- ── Command Palette ───────────────────────────────────────────── -->
+<div class="palette-overlay" id="palette-overlay" style="display:none" onclick="closePalette(event)">
+  <div class="palette" id="palette">
+    <input class="palette-input" id="palette-input" placeholder="Search or ask..." autocomplete="off">
+    <div class="palette-results" id="palette-results"></div>
+  </div>
+</div>
+
+<!-- ── Notification Island ───────────────────────────────────────── -->
+<div class="notif-island" id="notif-island" style="display:none">
+  <div class="notif-list" id="notif-list"></div>
+</div>
+
+<!-- ── Floating Islands ──────────────────────────────────────────── -->
+<div class="island island-design" id="island-design" style="display:none">
+  <div class="island-header" id="island-design-header">Design Preview <button onclick="hideIsland('design')">✕</button></div>
+  <iframe id="design-iframe" src="/static/previews/index.html" sandbox="allow-scripts allow-same-origin"></iframe>
+</div>
+
+<div class="island island-browser" id="island-browser" style="display:none">
+  <div class="island-header" id="island-browser-header">Browser <button onclick="hideIsland('browser')">✕</button></div>
+  <img id="browser-screenshot" src="" alt="Browser screenshot">
+</div>
+
+<script src="/static/app-v5.js"></script>
+</body>
+</html>
