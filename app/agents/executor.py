@@ -19,6 +19,8 @@ from app.agents.tools import (
     parse_tool_call, summarize_output,
 )
 from app.state import manager as state
+import pytz as _pytz
+from app.services import memory as mem_svc
 from app.skills import skill_loader
 
 skill_loader.load_all()
@@ -85,6 +87,26 @@ def _get_ceo_context() -> str:
     return ctx
 
 
+_IST = _pytz.timezone("Asia/Kolkata")
+
+def _build_context_block(agent_id: str, user_query: str) -> str:
+    """Live context injected into every agent prompt."""
+    try:
+        import datetime as _dt
+        memories  = mem_svc.get_relevant_memories(agent_id, user_query, limit=5)
+        queue     = [i for i in state.work_queue if i.get("status") != "completed"][-3:]
+        now_str   = _dt.datetime.now(_IST).strftime("%A %d %B %Y, %H:%M IST")
+        mem_lines = "\n".join(f"  - {m}" for m in memories) or "  (none yet)"
+        queue_str = json.dumps(queue, indent=2) if queue else "  []"
+        return (
+            f"\nLIVE CONTEXT [{now_str}]:\n"
+            f"Active tasks:\n{queue_str}\n"
+            f"Relevant memories:\n{mem_lines}\n"
+        )
+    except Exception:
+        return ""
+
+
 def _build_tgpt_prompt(agent_id: str, user_msg: str) -> str:
     agent = defs.get_agent(agent_id)
     persona = defs.agent_persona(agent_id)
@@ -111,9 +133,10 @@ AVAILABLE TOOLS:
 
 Always state your approach in 2 sentences before calling your first tool.
 """
+    live_ctx = _build_context_block(agent_id, user_msg)
     return (
         f"{persona}\n{tool_instructions}\n"
-        f"{context}"
+        f"{context}{live_ctx}"
         f"Conversation History:\n{hist_str}\n\n"
         f"User: {user_msg}\n\n{agent['name']}:"
     )
@@ -131,10 +154,11 @@ def _build_claude_prompt(agent_id: str, user_msg: str) -> str:
         for h in history[-(config.MAX_HISTORY):]
     )
 
+    live_ctx = _build_context_block(agent_id, user_msg)
     return (
         f"{persona}\n\n"
         f"Working directory: {config.WORK_DIR}"
-        f"{context}\n"
+        f"{context}{live_ctx}\n"
         f"Conversation History:\n{hist_str}\n\n"
         f"User: {user_msg}"
     )
@@ -269,6 +293,12 @@ async def run_tgpt_agent(
             f"Tool '{tool_type}' executed. Results:\n{tool_result}\n\nPlease proceed."
         )
 
+    try:
+        mem_svc.save_memory(agent_id, prompt, mem_type="user_query", importance=0.4)
+        if full_resp.strip():
+            mem_svc.save_memory(agent_id, full_resp[:500], mem_type="agent_response", importance=0.3)
+    except Exception:
+        pass
     return full_resp
 
 
@@ -341,6 +371,12 @@ async def run_claude_agent(
                 await send({"type": "backend_status", "agent": agent_id,
                             **backend_state.status_dict()})
 
+    try:
+        mem_svc.save_memory(agent_id, prompt, mem_type="user_query", importance=0.4)
+        if full_resp.strip():
+            mem_svc.save_memory(agent_id, full_resp[:500], mem_type="agent_response", importance=0.3)
+    except Exception:
+        pass
     return full_resp
 
 
