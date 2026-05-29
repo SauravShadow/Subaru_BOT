@@ -29,7 +29,7 @@ GEMINI_API_KEY = os.environ.get("GEMINI_API_KEY", "")
 SMTP_HOST     = os.environ.get("SMTP_HOST", "smtp.gmail.com")
 SMTP_PORT_NUM = int(os.environ.get("SMTP_PORT", "587"))
 SMTP_USER     = os.environ.get("SMTP_USER", "cid.subaru.ai@gmail.com")
-SMTP_PASS     = os.environ.get("SMTP_PASS", "yvrk eqcu qmle vzmd")
+SMTP_PASS     = os.environ.get("SMTP_PASS", "")
 
 # IMAP
 IMAP_HOST     = os.environ.get("IMAP_HOST", "imap.gmail.com")
