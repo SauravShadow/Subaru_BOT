@@ -23,8 +23,6 @@ import pytz as _pytz
 from app.services import memory as mem_svc
 from app.skills import skill_loader
 
-skill_loader.load_all()
-
 logger = logging.getLogger(__name__)
 
 # Signature: async (data: dict) -> None
@@ -405,6 +403,11 @@ async def run_gemini_agent(
             "agent":   agent_id,
             "message": {"content": [{"type": "text", "text": text}]},
         })
+        try:
+            mem_svc.save_memory(agent_id, prompt, mem_type="user_query", importance=0.4)
+            mem_svc.save_memory(agent_id, text[:500], mem_type="agent_response", importance=0.3)
+        except Exception:
+            pass
         return text
     except Exception as exc:
         logger.warning("Gemini API error (%s) — falling back to tgpt", exc)

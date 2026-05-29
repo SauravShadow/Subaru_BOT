@@ -106,7 +106,7 @@ def decay_old_memories(days_threshold: int = 7, decay_amount: float = 0.05) -> i
         result = c.execute("""
             UPDATE memories
                SET importance = MAX(0.05, importance - ?)
-             WHERE (last_hit_at IS NULL OR last_hit_at < date('now', ?))
+             WHERE (last_hit_at IS NULL OR last_hit_at < datetime('now', ?))
                AND importance > 0.05
         """, (decay_amount, f"-{days_threshold} days"))
         return result.rowcount
