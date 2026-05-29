@@ -28,6 +28,7 @@ async def test_run_agent_uses_gemini_when_claude_exhausted():
 @pytest.mark.asyncio
 async def test_run_gemini_agent_falls_back_on_error():
     """When Gemini raises, it falls back to tgpt and marks gemini failed."""
+    import sys
     import app.agents.backend_state as bs
     bs._quota_exhausted_at = None
     bs._gemini_failed_at   = None
@@ -38,8 +39,11 @@ async def test_run_gemini_agent_falls_back_on_error():
     sent = []
     async def fake_send(d): sent.append(d)
 
-    with patch("google.genai.Client") as mock_client:
-        mock_client.return_value.models.generate_content.side_effect = Exception("api error")
+    # Mock the entire google.genai module so the deferred import works cleanly
+    mock_genai = MagicMock()
+    mock_genai.Client.return_value.models.generate_content.side_effect = Exception("api error")
+
+    with patch.dict(sys.modules, {"google": MagicMock(genai=mock_genai), "google.genai": mock_genai}):
         with patch.object(executor, "run_tgpt_agent", new=AsyncMock(return_value="tgpt reply")):
             result = await executor.run_gemini_agent("ceo", "hello", fake_send)
             assert result == "tgpt reply"

@@ -348,9 +348,11 @@ async def run_gemini_agent(
 ) -> str:
     """Single Gemini API turn via google-genai SDK. Falls back to tgpt on any error."""
     try:
+        if not config.GEMINI_API_KEY:
+            raise ValueError("GEMINI_API_KEY not configured — skipping Gemini")
         import google.genai as genai
         client = genai.Client(api_key=config.GEMINI_API_KEY)
-        full_prompt = _build_tgpt_prompt(agent_id, prompt)
+        full_prompt = _build_claude_prompt(agent_id, prompt)
         response = await asyncio.to_thread(
             client.models.generate_content,
             model="gemini-2.0-flash",
