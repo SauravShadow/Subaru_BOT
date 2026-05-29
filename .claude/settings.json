@@ -1,0 +1,33 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(docker exec virtual-company *)",
+      "Bash(docker compose *)",
+      "Bash(docker logs *)",
+      "Bash(docker ps *)",
+      "Bash(docker build *)",
+      "Bash(git add *)",
+      "Bash(git commit *)",
+      "Bash(git log *)",
+      "Bash(git diff *)",
+      "Bash(git status*)",
+      "Bash(git init*)",
+      "Bash(git show *)",
+      "Bash(mkdir -p *)",
+      "Bash(touch *)",
+      "Bash(curl *)",
+      "Bash(python3 *)",
+      "Bash(python -m *)",
+      "Bash(find . *)",
+      "Bash(grep *)",
+      "Bash(ls *)",
+      "Bash(cat *)",
+      "Bash(ss -tlnp*)",
+      "Bash(sleep *)",
+      "Read(*)",
+      "Write(*)",
+      "Edit(*)"
+    ],
+    "defaultMode": "acceptEdits"
+  }
+}
