@@ -418,24 +418,76 @@ async def run_gemini_agent(
         return await run_tgpt_agent(agent_id, prompt, send, "pollinations")
 
 
+# ── Task-type classifier ───────────────────────────────────────────────────────
+
+_CLAUDE_SIGNALS = (
+    # Coding & logic
+    "code", "function", "class", "def ", "import ", "implement", "refactor",
+    "debug", "fix", "error:", "traceback", "exception", "syntax",
+    "python", "javascript", "typescript", "sql", "json", "yaml", "html", "css",
+    "test", "pytest", "assert", "api", "endpoint", "schema", "database",
+    # Strict structure / reasoning
+    "step by step", "follow exactly", "conditional", "algorithm", "logic",
+    # Creative / nuanced writing
+    "write a", "draft", "poem", "essay", "tone", "voice", "story",
+)
+
+def _classify_model(prompt: str) -> str:
+    """Choose the ideal model for this task before quota checks.
+
+    Routing map:
+      Long context (>8 KB)          → gemini  (1M context window, cheap)
+      Coding / logic / structure     → claude  (stronger reasoning)
+      Nuanced writing / strict rules → claude
+      Short chitchat (<150 chars)    → gemini  (fast, cheap)
+      Default                        → claude
+    """
+    length = len(prompt)
+    p = prompt.lower()
+
+    if length > 8000:          # large uploads, full file reads → Gemini
+        return "gemini"
+    if any(sig in p for sig in _CLAUDE_SIGNALS):
+        return "claude"
+    if length < 150:           # quick questions / chitchat → Gemini
+        return "gemini"
+    return "claude"
+
+
 # ── Unified dispatcher ─────────────────────────────────────────────────────────
 
 async def run_agent(
     agent_id: str,
     prompt: str,
     send: Sender,
-    model: str = "claude",   # kept for compat; auto-switching overrides this
+    model: str = "claude",   # kept for compat; explicit override skips classification
 ) -> str:
-    """Route to the correct backend using 3-tier auto-switching."""
+    """Route to the correct backend.
+
+    Priority:
+      1. Explicit model override (chatgpt / gemini flag).
+      2. Task-type classification → ideal model.
+      3. Quota/availability fallback: Claude → Gemini → tgpt.
+    """
     if model == "chatgpt":
         return await run_tgpt_agent(agent_id, prompt, send, "sky")
     if model == "gemini":
         return await run_gemini_agent(agent_id, prompt, send)
 
-    # Auto-switching: Claude → Gemini → tgpt
+    ideal = _classify_model(prompt)
+
+    if ideal == "gemini":
+        # Prefer Gemini for this task type
+        if backend_state.gemini_available():
+            return await run_gemini_agent(agent_id, prompt, send)
+        if backend_state.should_use_claude():
+            return await run_claude_agent(agent_id, prompt, send)
+        return await run_tgpt_agent(agent_id, prompt, send, "pollinations")
+
+    # ideal == "claude" (default)
     if backend_state.should_use_claude():
         return await run_claude_agent(agent_id, prompt, send)
-    if backend_state.should_use_gemini():
+    if backend_state.gemini_available():
         return await run_gemini_agent(agent_id, prompt, send)
     return await run_tgpt_agent(agent_id, prompt, send, "pollinations")
 

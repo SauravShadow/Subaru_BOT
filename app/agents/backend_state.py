@@ -42,6 +42,18 @@ def should_use_gemini() -> bool:
     return datetime.now() >= _gemini_failed_at + timedelta(minutes=GEMINI_RETRY_MINUTES)
 
 
+def gemini_available() -> bool:
+    """True when Gemini API key is configured and hasn't hit an error recently.
+    Unlike should_use_gemini(), this is independent of Claude quota state —
+    used for proactive task-type routing."""
+    from app import config as _cfg
+    if not _cfg.GEMINI_API_KEY:
+        return False
+    if _gemini_failed_at is None:
+        return True
+    return datetime.now() >= _gemini_failed_at + timedelta(minutes=GEMINI_RETRY_MINUTES)
+
+
 def retry_due_at() -> Optional[datetime]:
     if _quota_exhausted_at is None:
         return None

@@ -5,7 +5,7 @@ import asyncio
 import json
 from datetime import datetime
 
-from fastapi import APIRouter
+from fastapi import APIRouter, Request
 from fastapi.responses import JSONResponse
 
 from app import config
@@ -245,7 +245,11 @@ async def api_skills_list():
 
 
 @router.post("/api/skills/register")
-async def api_skills_register(body: dict):
+async def api_skills_register(request: Request, body: dict):
+    # Only agents running inside the container (localhost) may install skills
+    client_host = request.client.host if request.client else ""
+    if client_host not in ("127.0.0.1", "::1", "localhost"):
+        return JSONResponse({"ok": False, "error": "Skill registration is restricted to localhost"}, status_code=403)
     manifest   = body.get("manifest", {})
     skill_code = body.get("skill_code", "")
     test_code  = body.get("test_code", "")

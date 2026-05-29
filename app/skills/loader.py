@@ -106,7 +106,12 @@ class SkillLoader:
 
     def register_skill(self, manifest: dict, skill_code: str, test_code: str) -> dict:
         """Write skill files, run pytest, register on pass. Raises ValueError on test failure."""
-        sid         = manifest["id"]
+        import re as _re
+        sid = manifest.get("id", "")
+        if not _re.match(r'^[a-zA-Z0-9_-]+$', sid):
+            raise ValueError(
+                f"Invalid skill id {sid!r}: only letters, digits, underscores and hyphens allowed"
+            )
         version     = str(manifest.get("active_version", "1"))
         skill_dir   = self._dir / "learned" / sid
         version_dir = skill_dir / f"v{version}"

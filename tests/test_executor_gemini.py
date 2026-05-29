@@ -5,23 +5,57 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 @pytest.mark.asyncio
 async def test_run_agent_uses_gemini_when_claude_exhausted():
-    """When Claude is exhausted, run_agent routes to run_gemini_agent."""
+    """When Claude is exhausted, coding tasks fall back to Gemini (not tgpt)."""
     import app.agents.backend_state as bs
     bs._quota_exhausted_at = None
     bs._gemini_failed_at   = None
     bs._current_backend    = "claude"
-    bs.mark_quota_exhausted()   # Claude → exhausted, backend = "gemini"
+    bs.mark_quota_exhausted()   # Claude → exhausted
 
     from app.agents import executor
     sent = []
     async def fake_send(d): sent.append(d)
 
-    with patch.object(executor, "run_gemini_agent", new=AsyncMock(return_value="gemini reply")) as mock_g:
-        result = await executor.run_agent("ceo", "hello", fake_send)
-        mock_g.assert_called_once()
-        assert result == "gemini reply"
+    # Claude-classified prompt (coding) + Gemini available → falls back to Gemini
+    with patch.object(bs, "gemini_available", return_value=True):
+        with patch.object(executor, "run_gemini_agent", new=AsyncMock(return_value="gemini reply")) as mock_g:
+            result = await executor.run_agent("ceo", "debug this python function", fake_send)
+            mock_g.assert_called_once()
+            assert result == "gemini reply"
 
-    # reset
+    bs.mark_claude_recovered()
+
+
+@pytest.mark.asyncio
+async def test_classify_model_routes_correctly():
+    """Task classifier routes by type: long/chitchat → gemini, code/logic → claude."""
+    from app.agents.executor import _classify_model
+
+    assert _classify_model("write a python class for async http requests") == "claude"
+    assert _classify_model("debug this traceback") == "claude"
+    assert _classify_model("step by step instructions") == "claude"
+    assert _classify_model("hi") == "gemini"           # short chitchat
+    assert _classify_model("x" * 9000) == "gemini"    # long context
+
+
+@pytest.mark.asyncio
+async def test_run_agent_prefers_gemini_for_chitchat():
+    """Short chitchat prompts route to Gemini when it's available."""
+    import app.agents.backend_state as bs
+    bs._quota_exhausted_at = None
+    bs._gemini_failed_at   = None
+    bs._current_backend    = "claude"
+
+    from app.agents import executor
+    sent = []
+    async def fake_send(d): sent.append(d)
+
+    with patch.object(bs, "gemini_available", return_value=True):
+        with patch.object(executor, "run_gemini_agent", new=AsyncMock(return_value="gemini reply")) as mock_g:
+            result = await executor.run_agent("ceo", "hi", fake_send)
+            mock_g.assert_called_once()
+            assert result == "gemini reply"
+
     bs.mark_claude_recovered()
 
 
