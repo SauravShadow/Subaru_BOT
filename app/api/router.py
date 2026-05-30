@@ -13,6 +13,9 @@ from app.agents import definitions as defs
 from app.services import email as email_svc
 from app.state import manager as state
 from app.skills import skill_loader
+from app.services.scheduler import (
+    load_routines, save_routines, run_routine, get_routine_logs
+)
 
 router = APIRouter()
 
@@ -307,3 +310,79 @@ async def api_capabilities():
             {"id": "sre",        "name": "Phoenix SRE",       "desc": "DevOps portal active on Port 3030",          "active": True},
         ],
     }
+
+
+# ── Routines ───────────────────────────────────────────────────────────────────
+
+@router.get("/api/routines")
+async def api_routines_list():
+    return load_routines()
+
+
+@router.post("/api/routines")
+async def api_routines_create(body: dict):
+    import re
+    required = {"id", "name", "agent", "schedule", "prompt"}
+    missing  = required - set(body.keys())
+    if missing:
+        return JSONResponse({"ok": False, "error": f"Missing fields: {missing}"}, status_code=400)
+    if not re.match(r'^[a-zA-Z0-9_-]+$', body["id"]):
+        return JSONResponse({"ok": False, "error": "Invalid id format"}, status_code=400)
+    routines = load_routines()
+    if any(r["id"] == body["id"] for r in routines):
+        return JSONResponse({"ok": False, "error": "Routine id already exists"}, status_code=409)
+    routine = {
+        "id":          body["id"],
+        "name":        body["name"],
+        "description": body.get("description", ""),
+        "agent":       body["agent"],
+        "schedule":    body["schedule"],
+        "timezone":    body.get("timezone", "Asia/Kolkata"),
+        "prompt":      body["prompt"],
+        "enabled":     body.get("enabled", True),
+        "last_run":    None,
+        "last_status": None,
+        "run_count":   0,
+    }
+    routines.append(routine)
+    save_routines(routines)
+    return {"ok": True, "routine": routine}
+
+
+@router.put("/api/routines/{routine_id}")
+async def api_routines_update(routine_id: str, body: dict):
+    routines = load_routines()
+    for r in routines:
+        if r["id"] == routine_id:
+            updatable = {"name", "description", "schedule", "timezone", "prompt", "enabled"}
+            for k in updatable:
+                if k in body:
+                    r[k] = body[k]
+            save_routines(routines)
+            return {"ok": True, "routine": r}
+    return JSONResponse({"ok": False, "error": "Routine not found"}, status_code=404)
+
+
+@router.delete("/api/routines/{routine_id}")
+async def api_routines_delete(routine_id: str):
+    routines = load_routines()
+    updated  = [r for r in routines if r["id"] != routine_id]
+    if len(updated) == len(routines):
+        return JSONResponse({"ok": False, "error": "Routine not found"}, status_code=404)
+    save_routines(updated)
+    return {"ok": True}
+
+
+@router.post("/api/routines/{routine_id}/run")
+async def api_routines_run(routine_id: str):
+    routines = load_routines()
+    routine  = next((r for r in routines if r["id"] == routine_id), None)
+    if not routine:
+        return JSONResponse({"ok": False, "error": "Routine not found"}, status_code=404)
+    asyncio.create_task(run_routine(routine))
+    return {"ok": True, "message": f"Routine '{routine_id}' triggered"}
+
+
+@router.get("/api/routines/{routine_id}/logs")
+async def api_routines_logs(routine_id: str, limit: int = 10):
+    return get_routine_logs(routine_id, limit)
