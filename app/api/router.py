@@ -466,6 +466,28 @@ async def api_browser_click(body: dict):
     return {"ok": True, **result}
 
 
+# ── Conversation compact ───────────────────────────────────────────────────────
+
+@router.post("/api/compact")
+async def api_compact(body: dict = None):
+    """Archive old conversation messages to memory and trim history.
+
+    body: {"agent": "ceo"}  — compact one agent
+    body: {}                 — compact all agents
+    """
+    from app.agents.executor import _auto_compact_history
+
+    agent_id = (body or {}).get("agent")
+    targets  = [agent_id] if agent_id else list(state.conversation_histories.keys())
+
+    compacted = []
+    for aid in targets:
+        if _auto_compact_history(aid):
+            compacted.append(aid)
+
+    return {"ok": True, "compacted": compacted, "count": len(compacted)}
+
+
 # ── Approvals ──────────────────────────────────────────────────────────────────
 
 @router.get("/api/approvals")

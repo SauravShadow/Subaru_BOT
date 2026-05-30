@@ -89,6 +89,41 @@ def _get_ceo_context() -> str:
 
 _IST = _pytz.timezone("Asia/Kolkata")
 
+
+def _auto_compact_history(agent_id: str) -> bool:
+    """Archive old messages to FTS5 memory and trim conversation history.
+
+    Fires when history exceeds config.COMPACT_THRESHOLD. The archived messages
+    are retrievable via memory injection on future turns — context is compressed,
+    not lost. Returns True if compaction happened.
+    """
+    history = state.get_history(agent_id)
+    if len(history) <= config.COMPACT_THRESHOLD:
+        return False
+
+    to_archive = history[: -config.COMPACT_KEEP]
+    for msg in to_archive:
+        content = msg.get("content", "")
+        if content and len(content) > 30:
+            try:
+                mem_svc.save_memory(
+                    agent_id,
+                    content[:800],
+                    mem_type="compacted_history",
+                    importance=0.55,
+                )
+            except Exception:
+                pass
+
+    state.conversation_histories[agent_id] = history[-config.COMPACT_KEEP :]
+    state.save_state()
+    logger.info(
+        "Auto-compacted %d messages for agent '%s' (kept last %d)",
+        len(to_archive), agent_id, config.COMPACT_KEEP,
+    )
+    return True
+
+
 def _build_context_block(agent_id: str, user_query: str) -> str:
     """Live context injected into every agent prompt."""
     try:
@@ -728,6 +763,9 @@ async def run_agent(
                         "quota_ok": backend_state._quota_exhausted_at is None,
                         "gemini_ok": backend_state._gemini_failed_at is None,
                         "retry_at": None})
+
+    # Auto-compact history before building the prompt — saves tokens on long sessions
+    _auto_compact_history(agent_id)
 
     if model == "chatgpt":
         await _notify_backend("tgpt")

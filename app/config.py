@@ -40,7 +40,9 @@ IMAP_PASS     = os.environ.get("IMAP_PASS", SMTP_PASS)
 # Runtime
 USER_EMAIL  = os.environ.get("USER_EMAIL", "sauravsubaru@gmail.com")
 MAX_STORAGE = float(os.environ.get("MAX_STORAGE_GB", "10"))
-MAX_HISTORY = 30
+MAX_HISTORY      = 30
+COMPACT_THRESHOLD = int(os.environ.get("COMPACT_THRESHOLD", "20"))   # messages before auto-compact
+COMPACT_KEEP      = int(os.environ.get("COMPACT_KEEP",      "6"))    # recent messages to keep verbatim
 
 # Paths
 STATE_FILE     = WORK_DIR / "nexus_state.json"

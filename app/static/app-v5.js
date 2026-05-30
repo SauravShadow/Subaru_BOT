@@ -161,6 +161,26 @@ const PALETTE_CMDS = [
   { icon:"🧠", label:"Show Skills Panel",   action: toggleSkillsPanel },
   { icon:"💾", label:"Export Chat",          action: exportChat },
   { icon:"🔍", label:"Search Memory",        action: () => { const q=prompt("Search memory:"); if(q) sendMsgText(`Search your memory for: ${q}`); closePalette(null); } },
+  { icon:"🗜", label:"Compact Conversations",  action: () => {
+    fetch("/api/compact", {method:"POST", headers:{"Content-Type":"application/json"}, body:"{}"})
+      .then(r => r.json())
+      .then(d => pushNotif(
+        d.count > 0
+          ? `Compacted ${d.compacted.join(", ")} — old context saved to memory`
+          : "Nothing to compact yet",
+        d.count > 0 ? "success" : "warn"
+      ));
+  }},
+  { icon:"🗜", label:"Compact This Agent",    action: () => {
+    fetch("/api/compact", {method:"POST", headers:{"Content-Type":"application/json"}, body: JSON.stringify({agent: S.activeAgent})})
+      .then(r => r.json())
+      .then(d => pushNotif(
+        d.count > 0
+          ? `${S.activeAgent} compacted — old context saved to memory`
+          : `${S.activeAgent} history is short, nothing to compact`,
+        d.count > 0 ? "success" : "warn"
+      ));
+  }},
   { icon:"🗑", label:"Clear Chat",           action: () => { if(confirm("Clear this chat?")) clearChat(); } },
 ];
 let paletteIdx = 0;
