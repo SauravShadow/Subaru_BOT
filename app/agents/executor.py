@@ -128,6 +128,8 @@ AVAILABLE TOOLS:
 4. [EDIT: path/to/file]    — Edit a block (follow with TARGET:``` and REPLACEMENT:```)
 5. [READ_INBOX]            — Read recent unread emails
 6. [DONE: summary]         — Signal task completion
+7. [WRITE_PREVIEW:]        — Write HTML to the live design preview panel
+   (follow with ```html\ncontents\n```)
 
 Always state your approach in 2 sentences before calling your first tool.
 """
@@ -542,11 +544,14 @@ async def _execute_tool(
             from app.services.browser import write_preview as _wp
             from app.api.websocket import broadcast_event
             html = tool_args.get("html_content", tool_args.get("content", ""))
-            result = _wp(html)
-            asyncio.create_task(broadcast_event({
-                "type":    "design_preview_updated",
-                "message": result,
-            }))
+            if not html.strip():
+                result = "[write_preview error: empty HTML content — provide a complete HTML document]"
+            else:
+                result = _wp(html)
+                asyncio.create_task(broadcast_event({
+                    "type":    "design_preview_updated",
+                    "message": result,
+                }))
         else:
             handler = skill_loader.get_tool(tool_type)
             if handler:
