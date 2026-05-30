@@ -194,6 +194,21 @@ def parse_tool_call(text: str) -> Tuple[Optional[str], Optional[dict]]:
         content = code_m.group(1) if code_m else text[m.end():].strip()
         return "write_preview", {"html_content": content}
 
+    m = re.search(r'\[WEB_NAVIGATE:\s*(.*?)\]', text, re.DOTALL)
+    if m:
+        return "web_navigate", {"url": m.group(1).strip()}
+
+    m = re.search(r'\[WEB_EXTRACT:\s*(.*?)\]', text, re.DOTALL)
+    if m:
+        parts    = m.group(1).strip().split(None, 1)
+        url      = parts[0] if parts else ""
+        selector = parts[1] if len(parts) > 1 else "body"
+        return "web_extract", {"url": url, "selector": selector}
+
+    m = re.search(r'\[WEB_SCREENSHOT\]', text)
+    if m:
+        return "web_screenshot", {}
+
     return None, None
 
 

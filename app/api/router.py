@@ -16,6 +16,7 @@ from app.skills import skill_loader
 from app.services.scheduler import (
     load_routines, save_routines, run_routine, get_routine_logs
 )
+from app.services.browser import navigate, take_screenshot, extract_text, click_element
 
 router = APIRouter()
 
@@ -404,3 +405,59 @@ async def api_design_preview(request: Request, body: dict):
     result = write_preview(html)
     asyncio.create_task(broadcast_event({"type": "design_preview_updated", "message": result}))
     return {"ok": True, "message": result}
+
+
+# ── Browser ────────────────────────────────────────────────────────────────────
+
+@router.post("/api/browser/navigate")
+async def api_browser_navigate(body: dict):
+    url = body.get("url", "").strip()
+    if not url:
+        return JSONResponse({"ok": False, "error": "url required"}, status_code=400)
+    if not url.startswith(("http://", "https://")):
+        url = "https://" + url
+    result = await navigate(url)
+    if "error" in result:
+        return JSONResponse({"ok": False, **result}, status_code=422)
+    return {"ok": True, **result}
+
+
+@router.get("/api/browser/screenshot")
+async def api_browser_screenshot_get():
+    from pathlib import Path
+    from fastapi.responses import FileResponse
+    screenshot = Path("/app/app/static/previews/browser_screenshot.png")
+    if not screenshot.exists():
+        return JSONResponse({"ok": False, "error": "No screenshot yet"}, status_code=404)
+    return FileResponse(str(screenshot), media_type="image/png")
+
+
+@router.post("/api/browser/screenshot")
+async def api_browser_screenshot_post(body: dict):
+    url    = body.get("url", "").strip() or None
+    result = await take_screenshot(url)
+    if "error" in result:
+        return JSONResponse({"ok": False, **result}, status_code=422)
+    return {"ok": True, **result}
+
+
+@router.post("/api/browser/extract")
+async def api_browser_extract(body: dict):
+    url      = body.get("url", "").strip()
+    selector = body.get("selector", "body").strip()
+    if not url:
+        return JSONResponse({"ok": False, "error": "url required"}, status_code=400)
+    text = await extract_text(url, selector)
+    return {"ok": True, "text": text}
+
+
+@router.post("/api/browser/click")
+async def api_browser_click(body: dict):
+    url      = body.get("url", "").strip()
+    selector = body.get("selector", "").strip()
+    if not url or not selector:
+        return JSONResponse({"ok": False, "error": "url and selector required"}, status_code=400)
+    result = await click_element(url, selector)
+    if "error" in result:
+        return JSONResponse({"ok": False, **result}, status_code=422)
+    return {"ok": True, **result}

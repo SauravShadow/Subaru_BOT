@@ -130,6 +130,9 @@ AVAILABLE TOOLS:
 6. [DONE: summary]         — Signal task completion
 7. [WRITE_PREVIEW:]        — Write HTML to the live design preview panel
    (follow with ```html\ncontents\n```)
+8. [WEB_NAVIGATE: https://url]  — Navigate browser to URL, take screenshot
+9. [WEB_EXTRACT: https://url selector]  — Extract text from CSS selector on page
+10. [WEB_SCREENSHOT]            — Take screenshot of current browser page
 
 Always state your approach in 2 sentences before calling your first tool.
 """
@@ -508,6 +511,9 @@ async def _execute_tool(
         "edit":          "✏",
         "read_inbox":    "📬",
         "write_preview": "🎨",
+        "web_navigate":   "🌐",
+        "web_screenshot": "📸",
+        "web_extract":    "🔍",
     }
     label_map = {
         "bash":          "Executing Bash",
@@ -516,6 +522,9 @@ async def _execute_tool(
         "edit":          "Editing File",
         "read_inbox":    "Reading Inbox",
         "write_preview": "Writing Design Preview",
+        "web_navigate":   "Navigating Browser",
+        "web_screenshot": "Taking Screenshot",
+        "web_extract":    "Extracting Text",
     }
 
     path  = tool_args.get("path", tool_args.get("cmd", ""))
@@ -552,6 +561,27 @@ async def _execute_tool(
                     "type":    "design_preview_updated",
                     "message": result,
                 }))
+        elif tool_type == "web_navigate":
+            from app.services.browser import navigate as _nav
+            from app.api.websocket import broadcast_event
+            url      = tool_args.get("url", "")
+            result_d = await _nav(url)
+            result   = str(result_d)
+            asyncio.create_task(broadcast_event({
+                "type":       "browser_navigated",
+                "screenshot": result_d.get("screenshot", ""),
+                "title":      result_d.get("title", ""),
+                "url":        url,
+            }))
+        elif tool_type == "web_screenshot":
+            from app.services.browser import take_screenshot as _ss
+            result_d = await _ss()
+            result   = str(result_d)
+        elif tool_type == "web_extract":
+            from app.services.browser import extract_text as _ex
+            url      = tool_args.get("url", "")
+            selector = tool_args.get("selector", "body")
+            result   = await _ex(url, selector)
         else:
             handler = skill_loader.get_tool(tool_type)
             if handler:
