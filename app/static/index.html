@@ -26,6 +26,9 @@
     <div class="pill pill-queue" id="queue-pill" style="display:none">
       <span id="queue-count">0</span> Active
     </div>
+    <button class="pill pill-skills" id="routines-pill" title="Routines" onclick="toggleRoutinesPanel()" style="display:none">
+      <span id="routines-active-count">0</span> Routines
+    </button>
     <button class="pill pill-icon" id="notif-btn" title="Notifications" onclick="toggleNotif()">🔔</button>
   </div>
 </header>
@@ -101,6 +104,18 @@
       <div class="stat-row"><span>Skills loaded</span><span id="stat-skills">—</span></div>
     </div>
   </div>
+</div>
+
+<!-- ── Routines Panel ───────────────────────────────────────────────────── -->
+<div class="routines-panel" id="routines-panel" style="display:none">
+  <div class="routines-panel-header">
+    <span>ROUTINES</span>
+    <div style="display:flex;gap:8px;align-items:center">
+      <button class="skill-chip install" onclick="showCreateRoutine()" style="font-size:11px;cursor:pointer">➕ New</button>
+      <button onclick="toggleRoutinesPanel()">✕</button>
+    </div>
+  </div>
+  <div id="routines-list"></div>
 </div>
 
 <!-- ── Command Palette ───────────────────────────────────────────── -->

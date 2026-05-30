@@ -147,8 +147,13 @@ function triggerInstallSkill() {
 const PALETTE_CMDS = [
   { icon:"💬", label:"Ask CEO",             action: () => switchAgent("ceo") },
   { icon:"🎨", label:"Open Design Preview", action: () => showIsland("design") },
+  { icon:"✏",  label:"Ask Emilia to Design", action: () => {
+    const what = prompt("What should Emilia design?");
+    if (what) { switchAgent("frontend"); sendMsgText(`Design: ${what}`); showIsland("design"); }
+  }},
   { icon:"🌐", label:"Open Browser Panel",  action: () => showIsland("browser") },
-  { icon:"📋", label:"Show Routines",        action: () => sendMsgText("Show me all active routines and their last run status") },
+  { icon:"🔄", label:"Show Routines",        action: toggleRoutinesPanel },
+  { icon:"▶",  label:"Run Morning Standup",  action: () => fetch("/api/routines/morning_standup/run", {method:"POST"}).then(()=>pushNotif("Standup triggered")) },
   { icon:"🧠", label:"Show Skills Panel",   action: toggleSkillsPanel },
   { icon:"💾", label:"Export Chat",          action: exportChat },
   { icon:"🔍", label:"Search Memory",        action: () => { const q=prompt("Search memory:"); if(q) sendMsgText(`Search your memory for: ${q}`); closePalette(null); } },
@@ -414,11 +419,135 @@ function dispatch(obj) {
       pushNotif(`Email: ${obj.subject}`, obj.ok ? "success" : "error");
       break;
 
+    case "routine_completed":
+      pushNotif(
+        `${obj.routine_id}: ${obj.status === "success" ? "✓" : "✗"} ${(obj.output||"").slice(0,50)}`,
+        obj.status === "success" ? "success" : "error"
+      );
+      if ($id("routines-panel") && $id("routines-panel").style.display !== "none") loadRoutines();
+      break;
+
+    case "standup":
+      appendMsg("ceo", "assistant", `📋 **Morning Briefing**\n\n${obj.content || ""}`);
+      pushNotif("Morning standup delivered", "success");
+      break;
+
+    case "design_preview_updated": {
+      const iframe = $id("design-iframe");
+      if (iframe && iframe.src && iframe.src !== location.origin + "/") {
+        iframe.src = iframe.src;   // force reload
+      }
+      pushNotif("Design preview updated ✓", "success");
+      break;
+    }
+
     case "cleared":
       S.chatLogs[agentId] = [];
       if (agentId === S.activeAgent) renderChat();
       break;
   }
+}
+
+// ── Routines Panel ──────────────────────────────────────────────────────────
+let _routines = [];
+
+async function loadRoutines() {
+  try {
+    _routines = await fetch("/api/routines").then(r => r.json());
+    renderRoutines();
+    const pill = $id("routines-pill");
+    if (pill) {
+      pill.style.display = "inline-flex";
+      $id("routines-active-count").textContent = _routines.filter(r => r.enabled).length;
+    }
+  } catch(e) { console.error("loadRoutines:", e); }
+}
+
+function renderRoutines() {
+  const list = $id("routines-list");
+  if (!list) return;
+  list.innerHTML = "";
+  if (_routines.length === 0) {
+    list.innerHTML = '<div style="color:var(--muted);font-size:12px;text-align:center;padding:20px">No routines yet. Click ➕ New to create one.</div>';
+    return;
+  }
+  _routines.forEach(r => {
+    const statusLabel = r.last_status || "never run";
+    const statusClass = r.last_status === "success" ? "success" : r.last_status === "error" ? "error" : "pending";
+    const lastRun     = r.last_run ? new Date(r.last_run).toLocaleString("en-IN", {timeZone:"Asia/Kolkata", hour12:false}).slice(0,16) : "—";
+    const card        = document.createElement("div");
+    card.className    = "routine-card";
+    card.innerHTML    = `
+      <div class="routine-card-header">
+        <span class="routine-name">${escHtml(r.name)}</span>
+        <span class="routine-status ${statusClass}">${escHtml(statusLabel)}</span>
+      </div>
+      <div class="routine-meta">
+        ${escHtml(r.agent)} · ${escHtml(r.schedule)} · ${escHtml(r.timezone || "IST")} · Last: ${lastRun}
+      </div>
+      <div class="routine-actions">
+        <button class="routine-toggle ${r.enabled ? 'on' : ''}" onclick="toggleRoutine('${escHtml(r.id)}', this)" title="${r.enabled ? 'Enabled' : 'Disabled'}"></button>
+        <button class="btn-run" onclick="runRoutineNow('${escHtml(r.id)}')">▶ Run</button>
+        <span style="flex:1"></span>
+        <button class="cmdbar-btn" onclick="deleteRoutine('${escHtml(r.id)}')" style="font-size:12px" title="Delete">🗑</button>
+      </div>`;
+    list.appendChild(card);
+  });
+}
+
+function toggleRoutinesPanel() {
+  const p = $id("routines-panel");
+  const skills = $id("skills-panel");
+  if (skills) skills.style.display = "none";
+  const showing = p.style.display !== "none";
+  p.style.display = showing ? "none" : "block";
+  if (!showing) loadRoutines();
+}
+
+async function toggleRoutine(id, btn) {
+  const routine = _routines.find(r => r.id === id);
+  if (!routine) return;
+  const newEnabled = !routine.enabled;
+  await fetch(`/api/routines/${id}`, {
+    method: "PUT",
+    headers: {"Content-Type": "application/json"},
+    body: JSON.stringify({ enabled: newEnabled }),
+  });
+  routine.enabled = newEnabled;
+  renderRoutines();
+}
+
+async function runRoutineNow(id) {
+  pushNotif(`Running routine '${id}'...`);
+  const r = await fetch(`/api/routines/${id}/run`, {method:"POST"}).then(r=>r.json());
+  if (!r.ok) pushNotif(`Failed: ${r.error}`, "error");
+}
+
+async function deleteRoutine(id) {
+  if (!confirm(`Delete routine '${id}'?`)) return;
+  await fetch(`/api/routines/${id}`, {method:"DELETE"});
+  await loadRoutines();
+}
+
+function showCreateRoutine() {
+  const id       = prompt("Routine ID (letters/numbers/underscore/hyphen):");
+  if (!id) return;
+  const name     = prompt("Display name:");
+  if (!name) return;
+  const schedule = prompt("Cron schedule (e.g. '0 9 * * *' for 9 AM daily):", "0 9 * * *");
+  if (!schedule) return;
+  const routinePrompt = prompt("Agent prompt:");
+  if (!routinePrompt) return;
+  const agent    = prompt("Agent (ceo/backend/frontend/qa):", "ceo");
+
+  fetch("/api/routines", {
+    method: "POST",
+    headers: {"Content-Type": "application/json"},
+    body: JSON.stringify({ id, name, schedule, prompt: routinePrompt, agent }),
+  }).then(r => r.json()).then(d => {
+    if (d.ok) { loadRoutines(); pushNotif(`Routine '${name}' created`, "success"); }
+    else pushNotif(`Error: ${d.error}`, "error");
+  });
 }
 
 // ── Keyboard ─────────────────────────────────────────────────────────

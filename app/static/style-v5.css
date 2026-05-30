@@ -153,3 +153,50 @@ body.thinking .reactor-core { box-shadow: var(--glow-cyan), inset 0 0 30px hsla(
 ::-webkit-scrollbar { width: 4px; height: 4px; }
 ::-webkit-scrollbar-track { background: transparent; }
 ::-webkit-scrollbar-thumb { background: var(--border); border-radius: 2px; }
+
+/* ── Routines Panel ──────────────────────────────────────────────────── */
+.routines-panel {
+  position: fixed; top: 52px; right: 0; bottom: 0; width: 340px;
+  background: var(--bg-card); border-left: 1px solid var(--border);
+  padding: 16px; overflow-y: auto; z-index: 80;
+  animation: slide-in-right .2s ease;
+}
+.routines-panel-header {
+  display: flex; justify-content: space-between; align-items: center;
+  font-family: var(--font-brand); font-size: 12px; letter-spacing: .1em;
+  color: var(--gold); margin-bottom: 16px;
+}
+.routines-panel-header button { background: none; border: none; color: var(--muted); cursor: pointer; font-size: 14px; }
+.routine-card {
+  background: var(--bg-elevated); border: 1px solid var(--border);
+  border-radius: var(--radius); padding: 12px; margin-bottom: 10px;
+}
+.routine-card-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px; }
+.routine-name { font-weight: 600; font-size: 13px; color: var(--text); }
+.routine-meta { font-size: 11px; color: var(--muted); margin-bottom: 8px; }
+.routine-actions { display: flex; gap: 6px; align-items: center; }
+.routine-status {
+  display: inline-block; padding: 2px 8px; border-radius: 10px;
+  font-size: 10px; font-weight: 600;
+}
+.routine-status.success { background: hsla(140,70%,50%,.15); color: var(--green); }
+.routine-status.error   { background: hsla(0,80%,60%,.15);   color: var(--red); }
+.routine-status.pending { background: hsla(38,100%,55%,.15);  color: var(--warn); }
+.routine-toggle {
+  position: relative; width: 36px; height: 20px;
+  background: var(--border); border: none; border-radius: 10px; cursor: pointer;
+  transition: background .2s;
+}
+.routine-toggle.on { background: var(--green); }
+.routine-toggle::after {
+  content: ''; position: absolute; width: 14px; height: 14px;
+  background: white; border-radius: 50%; top: 3px; left: 3px;
+  transition: transform .2s;
+}
+.routine-toggle.on::after { transform: translateX(16px); }
+.btn-run {
+  background: hsla(185,100%,50%,.1); border: 1px solid hsla(185,100%,50%,.3);
+  color: var(--cyan); border-radius: 6px; padding: 3px 10px;
+  font-size: 11px; cursor: pointer;
+}
+.btn-run:hover { background: hsla(185,100%,50%,.2); }
