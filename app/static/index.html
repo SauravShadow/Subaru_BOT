@@ -65,7 +65,7 @@
     <textarea id="msg-input" class="cmdbar-input" placeholder="Ask Subaru anything..." rows="1"></textarea>
     <label class="cmdbar-btn" title="Attach file or image" for="file-input">📎</label>
     <input type="file" id="file-input" accept="image/*,.pdf,.csv,.txt" style="display:none" multiple>
-    <button class="cmdbar-btn" id="voice-btn" title="Voice input">🎤</button>
+    <button class="cmdbar-btn" id="voice-btn" title="Voice input (Hey Subaru)" onclick="toggleVoiceMode()">🎤</button>
     <button class="cmdbar-btn cmdbar-palette-btn" onclick="togglePalette()" title="Command palette (⌘K)">⌘</button>
     <button class="cmdbar-btn cmdbar-send" id="send-btn" onclick="sendMsg()">▶</button>
   </div>

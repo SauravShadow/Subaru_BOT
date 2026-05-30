@@ -689,6 +689,13 @@ const AGENT_VOICES = {
   devops:   { lang: "en-US", pitch: 0.8, rate: 0.9  },
 };
 
+let _cachedVoices = [];
+if (window.speechSynthesis) {
+  const _loadVoices = () => { _cachedVoices = window.speechSynthesis.getVoices(); };
+  _loadVoices();
+  window.speechSynthesis.addEventListener("voiceschanged", _loadVoices);
+}
+
 let _recognition  = null;
 let _voiceEnabled = false;
 let _voiceActive  = false;
@@ -765,15 +772,17 @@ function toggleVoiceMode() {
 function speakResponse(text, agentId) {
   if (!_ttsEnabled || !window.speechSynthesis || !text) return;
   speechSynthesis.cancel();
-  const clean = text.replace(/```[\s\S]*?```/g, "code block").slice(0, 500);
-  const utter  = new SpeechSynthesisUtterance(clean);
+  const clean   = text.replace(/```[\s\S]*?```/g, "code block").slice(0, 500);
+  const utter   = new SpeechSynthesisUtterance(clean);
   const profile = AGENT_VOICES[agentId] || AGENT_VOICES.ceo;
   utter.lang    = profile.lang;
   utter.pitch   = profile.pitch;
   utter.rate    = profile.rate;
-  const voices  = speechSynthesis.getVoices();
-  const match   = voices.find(v => v.lang.startsWith(profile.lang.split("-")[0]));
-  if (match) utter.voice = match;
+  const voices  = _cachedVoices.length ? _cachedVoices : speechSynthesis.getVoices();
+  const langPrefix = profile.lang.split("-")[0];
+  const preferred  = voices.find(v => v.lang.startsWith(langPrefix) && /google|microsoft/i.test(v.name))
+                  || voices.find(v => v.lang.startsWith(langPrefix));
+  if (preferred) utter.voice = preferred;
   speechSynthesis.speak(utter);
 }
 
