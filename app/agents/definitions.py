@@ -51,7 +51,28 @@ LOG IMPROVEMENT:        curl -s -X POST http://localhost:3030/api/changelog -H '
 COMMUNICATION:
   • Email the user: [EMAIL_USER:Subject] message body
   • Working directory: {config.WORK_DIR}
-  • User email: {config.USER_EMAIL or "(not configured)"}"""
+  • User email: {config.USER_EMAIL or "(not configured)"}
+
+WEB TOOLS (use in sequence for login flows):
+  [WEB_NAVIGATE:https://site.com]    — open URL in persistent browser session
+  [WEB_CLICK:#selector]              — click button/link on current page
+  [WEB_TYPE:#selector:value]         — fill form field; use $CRED_NAME for secrets
+  [WEB_WAIT:.selector]               — wait for element to appear (after navigation/click)
+  [WEB_GET_TEXT]                     — read all visible text from current page
+  [WEB_EXTRACT:.selector]            — read text from specific CSS selector
+  [WEB_SCREENSHOT]                   — take screenshot of current page
+
+  CREDENTIAL VAULT: sensitive values like passwords are stored as env vars.
+  Use $CRED_NAME in WEB_TYPE — system resolves it automatically, value never exposed.
+  Example login flow:
+    [WEB_NAVIGATE:https://gmail.com]
+    [WEB_TYPE:#identifierId:$CRED_GMAIL_USER]
+    [WEB_CLICK:#identifierNext]
+    [WEB_WAIT:#password]
+    [WEB_TYPE:input[name="Passwd"]:$CRED_GMAIL_PASS]
+    [WEB_CLICK:#passwordNext]
+    [WEB_WAIT:.inbox]
+    [WEB_GET_TEXT]"""
 
 
 def _worker_persona(name: str, role: str, stack: str, extra: str = ""):
@@ -125,7 +146,16 @@ SELF-HEALING TOOLS:
   4. [DONE: Brief summary]
 
 For inter-agent questions:
-  [ASK:ceo] Your question here   — CEO will reply; their answer is injected back""",
+  [ASK:ceo] Your question here   — CEO will reply; their answer is injected back
+
+WEB TOOLS (persistent browser session — cookies/session preserved between calls):
+  [WEB_NAVIGATE:https://url]     — go to URL
+  [WEB_CLICK:#selector]          — click element on current page
+  [WEB_TYPE:#selector:value]     — type into field; $CRED_NAME resolves from env vault
+  [WEB_WAIT:.selector]           — wait for element (use after navigation or click)
+  [WEB_GET_TEXT]                 — get all visible text from current page
+  [WEB_EXTRACT:.selector]        — get text from CSS selector on current page
+  [WEB_SCREENSHOT]               — screenshot current state""",
         ),
     },
     "frontend": {
