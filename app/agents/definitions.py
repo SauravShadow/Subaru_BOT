@@ -109,7 +109,23 @@ new code
 
   For new packages (rare): edit /app/requirements.txt, then:
   [BASH: curl -s -X POST http://host.docker.internal:3030/api/rebuild]
-  Send [DONE:] message BEFORE triggering rebuild (container will restart).""",
+  Send [DONE:] message BEFORE triggering rebuild (container will restart).
+
+SELF-HEALING TOOLS:
+  When you encounter a bug, limitation, or improvement opportunity:
+  1. [READ_SOURCE: /app/app/agents/executor.py]    — read the file first
+  2. [WRITE_SOURCE: /app/app/services/foo.py]      — write the updated content
+     ```python
+     <full updated file content>
+     ```
+     Surface zone (static/) -> auto-applied immediately
+     Learning zone (services/, skills/) -> auto-applied immediately
+     Protected zone (executor.py, router.py, etc.) -> emails Saurav for approval
+  3. [RUN_TESTS]                                   — verify changes pass tests
+  4. [DONE: Brief summary]
+
+For inter-agent questions:
+  [ASK:ceo] Your question here   — CEO will reply; their answer is injected back""",
         ),
     },
     "frontend": {

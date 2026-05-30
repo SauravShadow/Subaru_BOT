@@ -481,6 +481,32 @@ function dispatch(obj) {
       if ($id("browser-url-input") && obj.url) $id("browser-url-input").value = obj.url;
       if ($id("browser-status")) $id("browser-status").textContent = `✓ ${obj.title || obj.url}`;
       break;
+
+    case "approval_requested":
+      pushNotif(
+        `🔐 Approval needed: ${obj.file_path || "file"} (ID: ${obj.approval_id})`,
+        "warn"
+      );
+      appendMsg(obj.agent || "ceo", "assistant",
+        `⚠️ I need your approval to modify \`${obj.file_path}\`.\n\n` +
+        `**Approval ID:** \`${obj.approval_id}\`\n\n` +
+        `Reply: \`APPROVE ${obj.approval_id}\` or \`DENY ${obj.approval_id}\`\n\n` +
+        `Or use the API:\n\`POST /api/approvals/${obj.approval_id}/apply\``
+      );
+      break;
+
+    case "approval_applied":
+      pushNotif(`✅ Applied: ${obj.message || obj.approval_id}`, "success");
+      appendMsg("ceo", "assistant", `✅ Change applied: ${obj.message}`);
+      break;
+
+    case "approval_denied":
+      pushNotif(`✗ Denied: ${obj.message || obj.approval_id}`, "warn");
+      break;
+
+    case "source_file_modified":
+      pushNotif(`🔧 ${obj.agent}: modified ${obj.path} (${obj.zone})`, "success");
+      break;
   }
 }
 
