@@ -50,3 +50,8 @@ PROJECTS_FILE  = WORK_DIR / "nexus_projects.json"
 CHANGELOG_FILE = WORK_DIR / "nexus_changelog.json"
 MEMORY_DB      = WORK_DIR / "nexus_memory.db"
 SKILLS_DIR     = Path("/app/skills")
+
+
+def get_credential(name: str) -> str:
+    """Resolve CRED_{NAME} from env. Agents use $CRED_NAME in WEB_TYPE args."""
+    return os.environ.get(f"CRED_{name.upper().replace('-', '_')}", "")
