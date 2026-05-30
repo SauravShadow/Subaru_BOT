@@ -603,7 +603,7 @@ async def _execute_tool(
         "ask_agent":     "Asking agent",
     }
 
-    path  = tool_args.get("path", tool_args.get("cmd", ""))
+    path  = tool_args.get("path", tool_args.get("cmd", tool_args.get("target", tool_args.get("url", ""))))
     label = label_map.get(tool_type, tool_type)
     await send({
         "type":  "tool_call",

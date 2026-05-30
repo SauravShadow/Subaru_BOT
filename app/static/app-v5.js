@@ -388,7 +388,11 @@ function dispatch(obj) {
       break;
 
     case "tool_call":
-      addThinkingStep(`${obj.label || obj.tool}: ${obj.path || ""}`, "active");
+      if (obj.tool === "ask_agent") {
+        addThinkingStep(`↔ Asking ${obj.path || "agent"}…`, "active");
+      } else {
+        addThinkingStep(`${obj.label || obj.tool}: ${obj.path || ""}`, "active");
+      }
       break;
 
     case "done":
