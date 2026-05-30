@@ -5,6 +5,9 @@ WORKDIR /app
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
+# Install Playwright Chromium + system deps (~300 MB, required for browser tools)
+RUN pip install playwright && playwright install chromium --with-deps
+
 # Create non-root user matching host uid=1000 (subaru) so volume mounts work
 RUN groupadd -g 1000 nexus && useradd -m -u 1000 -g nexus nexus
 
