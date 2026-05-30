@@ -90,3 +90,36 @@ async def test_get_browser_creates_new_when_disconnected():
     assert b is mock_new_browser
     bmod._browser = None
     bmod._playwright_ctx = None
+
+
+@pytest.mark.asyncio
+async def test_get_browser_closes_stale_context_on_reconnect():
+    """_get_browser must call __aexit__ on the old context before creating a new one."""
+    from app.services import browser as bmod
+
+    # Simulate disconnected browser with an existing stale context
+    mock_old_browser = MagicMock()
+    mock_old_browser.is_connected.return_value = False
+
+    mock_old_ctx = AsyncMock()
+    mock_old_ctx.__aexit__ = AsyncMock(return_value=None)
+
+    mock_new_browser = MagicMock()
+    mock_pw = AsyncMock()
+    mock_pw.chromium.launch = AsyncMock(return_value=mock_new_browser)
+    mock_new_ctx = AsyncMock()
+    mock_new_ctx.__aenter__ = AsyncMock(return_value=mock_pw)
+    mock_new_ctx.__aexit__ = AsyncMock(return_value=None)
+
+    bmod._browser = mock_old_browser
+    bmod._playwright_ctx = mock_old_ctx  # stale context exists
+
+    with patch("app.services.browser.async_playwright", return_value=mock_new_ctx):
+        await bmod._get_browser()
+
+    # The OLD context must have been closed
+    mock_old_ctx.__aexit__.assert_called_once()
+
+    # Cleanup
+    bmod._browser = None
+    bmod._playwright_ctx = None
