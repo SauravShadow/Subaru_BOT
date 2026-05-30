@@ -472,7 +472,8 @@ async def run_claude_vision(
                 full_resp += chunk
 
         try:
-            mem_svc.save_memory(agent_id, text, mem_type="vision_query",    importance=0.5)
+            query_label = text if text else "What do you see in this image?"
+            mem_svc.save_memory(agent_id, query_label, mem_type="vision_query", importance=0.5)
             if full_resp:
                 mem_svc.save_memory(agent_id, full_resp[:500], mem_type="vision_response", importance=0.4)
         except Exception:

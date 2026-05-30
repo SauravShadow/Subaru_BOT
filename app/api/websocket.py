@@ -300,6 +300,16 @@ async def ws_endpoint(ws: WebSocket, model: str = Query(default="claude")) -> No
                 ]
                 if images and backend_state.should_use_claude():
                     await _handle_vision_message(session, agent_id, text, images)
+                elif images:
+                    # Claude not available — inform user, can't process image
+                    await session.send({
+                        "type":    "assistant",
+                        "agent":   agent_id,
+                        "message": {"content": [{"type": "text", "text":
+                            "⚠️ Image analysis requires Claude — currently unavailable (quota hit). "
+                            "Please try again when Claude recovers, or send a text-only message."
+                        }]},
+                    })
                 elif text:
                     await _handle_message(session, agent_id, text)
                 else:
