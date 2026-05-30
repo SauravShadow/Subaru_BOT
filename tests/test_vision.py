@@ -5,6 +5,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 @pytest.mark.asyncio
 async def test_run_claude_vision_streams_text():
     """run_claude_vision should stream text chunks via send."""
+    import os
     from app.agents.executor import run_claude_vision
 
     sent = []
@@ -26,8 +27,9 @@ async def test_run_claude_vision_streams_text():
     mock_client = MagicMock()
     mock_client.messages.stream.return_value = mock_stream
 
-    with patch("anthropic.AsyncAnthropic", return_value=mock_client):
-        result = await run_claude_vision("ceo", "what do you see?", images, fake_send)
+    with patch.dict(os.environ, {"ANTHROPIC_API_KEY": "test-key"}):
+        with patch("anthropic.AsyncAnthropic", return_value=mock_client):
+            result = await run_claude_vision("ceo", "what do you see?", images, fake_send)
 
     text_events = [e for e in sent if e.get("type") == "assistant"]
     assert len(text_events) > 0
@@ -37,6 +39,7 @@ async def test_run_claude_vision_streams_text():
 @pytest.mark.asyncio
 async def test_run_claude_vision_builds_multimodal_content():
     """run_claude_vision must put image blocks before the text block."""
+    import os
     from app.agents.executor import run_claude_vision
 
     sent = []
@@ -66,8 +69,9 @@ async def test_run_claude_vision_builds_multimodal_content():
     class FakeClient:
         messages = FakeMessages()
 
-    with patch("anthropic.AsyncAnthropic", return_value=FakeClient()):
-        await run_claude_vision("ceo", "describe these", images, fake_send)
+    with patch.dict(os.environ, {"ANTHROPIC_API_KEY": "test-key"}):
+        with patch("anthropic.AsyncAnthropic", return_value=FakeClient()):
+            await run_claude_vision("ceo", "describe these", images, fake_send)
 
     content = captured_call.get("messages", [{}])[0].get("content", [])
     image_blocks = [b for b in content if b.get("type") == "image"]

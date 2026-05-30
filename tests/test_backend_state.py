@@ -58,8 +58,8 @@ def test_gemini_retry_window():
     m = _fresh()
     m.mark_quota_exhausted()
     m.mark_gemini_failed()
-    # Fake gemini_failed_at to be old enough
-    m._gemini_failed_at = datetime.now() - timedelta(minutes=m.GEMINI_RETRY_MINUTES + 1)
+    # Fake gemini_failed_at to be old enough (now in seconds, not minutes)
+    m._gemini_failed_at = datetime.now() - timedelta(seconds=m.GEMINI_RETRY_SECONDS + 1)
     assert m.should_use_gemini() is True
 
 
