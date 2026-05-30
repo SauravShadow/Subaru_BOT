@@ -65,13 +65,12 @@ async def _get_page():
         result = _current_page.is_closed()
         closed = (await result) if inspect.isawaitable(result) else result
     if closed:
-        _current_page = await browser.new_page()
-        await _current_page.set_extra_http_headers({
-            "User-Agent": (
+        _current_page = await browser.new_page(
+            user_agent=(
                 "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 "
                 "(KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36"
             )
-        })
+        )
         logger.info("New persistent browser page created.")
     return _current_page
 
