@@ -10,19 +10,23 @@ from email.mime.text import MIMEText
 from app import config
 
 
-async def send_mail(subject: str, body: str) -> dict:
-    if not all([config.SMTP_USER, config.SMTP_PASS, config.USER_EMAIL]):
+async def send_mail(subject: str, body: str, to: str = None) -> dict:
+    if not all([config.SMTP_USER, config.SMTP_PASS]):
         return {"ok": False, "error": "SMTP not configured"}
+
+    recipient = to if to else config.USER_EMAIL
+    if not recipient:
+        return {"ok": False, "error": "No recipient email specified"}
 
     def _do():
         msg            = MIMEText(body)
         msg["Subject"] = subject
         msg["From"]    = config.SMTP_USER
-        msg["To"]      = config.USER_EMAIL
+        msg["To"]      = recipient
         with smtplib.SMTP(config.SMTP_HOST, config.SMTP_PORT_NUM) as s:
             s.starttls()
             s.login(config.SMTP_USER, config.SMTP_PASS)
-            s.sendmail(config.SMTP_USER, config.USER_EMAIL, msg.as_string())
+            s.sendmail(config.SMTP_USER, recipient, msg.as_string())
 
     try:
         loop = asyncio.get_event_loop()

@@ -100,6 +100,13 @@ async def run_routine(routine: dict) -> str:
         await run_agent(routine["agent"], routine["prompt"], _collect, model="claude")
         output = "".join(output_acc)
         status = "success"
+
+        # Parse and send any generated emails (background routines fail-safe)
+        from app.services import delegation as deleg_svc
+        from app.services import email as email_svc
+        for target, subj, body in deleg_svc.parse_emails(output):
+            await email_svc.send_mail(f"[Shadow Garden] {subj}", body, to=target)
+
     except Exception as exc:
         output = f"[Error: {exc}]"
         status = "error"

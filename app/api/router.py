@@ -125,7 +125,7 @@ async def api_fire(agent_id: str):
 
 @router.post("/api/email")
 async def api_email(body: dict):
-    return await email_svc.send_mail(body.get("subject", "Shadow Garden"), body.get("body", ""))
+    return await email_svc.send_mail(body.get("subject", "Shadow Garden"), body.get("body", ""), to=body.get("to"))
 
 
 @router.get("/api/email/inbox")

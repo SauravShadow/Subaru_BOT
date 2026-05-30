@@ -49,7 +49,7 @@ TRIGGER REBUILD:        curl -s -X POST http://host.docker.internal:3030/api/reb
 LOG IMPROVEMENT:        curl -s -X POST http://localhost:3030/api/changelog -H 'Content-Type: application/json' -d '{{"feature":"...","files":["/app/..."],"agent":"ceo"}}'
 
 COMMUNICATION:
-  • Email the user: [EMAIL_USER:Subject] message body
+  • Email: [EMAIL_USER:recipient@domain.com | Subject] message body (or just [EMAIL_USER:Subject] to email the main user)
   • Working directory: {config.WORK_DIR}
   • User email: {config.USER_EMAIL or "(not configured)"}
 

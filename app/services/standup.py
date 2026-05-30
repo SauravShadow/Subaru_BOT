@@ -76,6 +76,12 @@ async def run_morning_standup(broadcast_fn=None) -> str:
     await run_agent("ceo", prompt, _send, model="claude")
     text = "".join(output_acc)
 
+    # Parse and send any generated emails (background standups fail-safe)
+    from app.services import delegation as deleg_svc
+    from app.services import email as email_svc
+    for target, subj, body in deleg_svc.parse_emails(text):
+        await email_svc.send_mail(f"[Shadow Garden] {subj}", body, to=target)
+
     await broadcast_event({
         "type":    "standup",
         "content": text,

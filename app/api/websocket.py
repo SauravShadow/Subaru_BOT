@@ -183,8 +183,8 @@ async def _handle_message(session: Session, agent_id: str, text: str) -> None:
             session.worker_tasks[role] = bg
 
         # Send any emails
-        for subj, body in deleg_svc.parse_emails(full_resp):
-            result = await email_svc.send_mail(f"[Shadow Garden] {subj}", body)
+        for target, subj, body in deleg_svc.parse_emails(full_resp):
+            result = await email_svc.send_mail(f"[Shadow Garden] {subj}", body, to=target)
             await session.send({
                 "type": "email_sent", "subject": subj,
                 "ok": result["ok"], "error": result.get("error", ""),

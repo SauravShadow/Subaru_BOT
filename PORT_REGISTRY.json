@@ -1,27 +1,74 @@
 {
   "ports": {
-    "80":   {"subdomain": "quantdash", "service": "quantdash", "note": "quantdash.saurav-info.xyz"},
-    "3001": {"subdomain": "trade",     "service": "trade-app",  "note": "trade.saurav-info.xyz"},
-    "3030": {"subdomain": "botsubaru", "service": "shadow-garden-sidecar", "note": "main sidecar — DO NOT REUSE"},
-    "3031": {"subdomain": "",          "service": "shadow-garden-container", "note": "internal only — DO NOT REUSE"},
-    "8080": {"subdomain": "www",       "service": "portfolio",  "note": "saurav-info.xyz + www.saurav-info.xyz"},
-    "8081": {"subdomain": "task",      "service": "task-tracker","note": "task.saurav-info.xyz"},
-    "8090": {"subdomain": "habit",     "service": "habit-tracker","note": "habit.saurav-info.xyz"},
-    "8100": {"subdomain": "go",        "service": "expense-planner","note": "SpendSmart — go.saurav-info.xyz"},
-    "8200": {"subdomain": "finance",   "service": "wealthwise", "note": "WealthWise — finance.saurav-info.xyz"},
-    "9000": {"subdomain": "stream",    "service": "stream-app", "note": "stream.saurav-info.xyz"}
+    "80": {
+      "subdomain": "quantdash",
+      "service": "quantdash",
+      "note": "quantdash.saurav-info.xyz"
+    },
+    "3001": {
+      "subdomain": "trade",
+      "service": "trade-app",
+      "note": "trade.saurav-info.xyz"
+    },
+    "3030": {
+      "subdomain": "botsubaru",
+      "service": "shadow-garden-sidecar",
+      "note": "main sidecar \u2014 DO NOT REUSE"
+    },
+    "3031": {
+      "subdomain": "",
+      "service": "shadow-garden-container",
+      "note": "internal only \u2014 DO NOT REUSE"
+    },
+    "8080": {
+      "subdomain": "www",
+      "service": "portfolio",
+      "note": "saurav-info.xyz + www.saurav-info.xyz"
+    },
+    "8081": {
+      "subdomain": "task",
+      "service": "task-tracker",
+      "note": "task.saurav-info.xyz"
+    },
+    "8090": {
+      "subdomain": "habit",
+      "service": "habit-tracker",
+      "note": "habit.saurav-info.xyz"
+    },
+    "8100": {
+      "subdomain": "go",
+      "service": "expense-planner",
+      "note": "SpendSmart \u2014 go.saurav-info.xyz"
+    },
+    "8200": {
+      "subdomain": "finance",
+      "service": "wealthwise",
+      "note": "WealthWise \u2014 finance.saurav-info.xyz"
+    },
+    "9000": {
+      "subdomain": "stream",
+      "service": "stream-app",
+      "note": "stream.saurav-info.xyz"
+    }
   },
   "subdomains": {
     "quantdash": 80,
-    "trade":     3001,
+    "trade": 3001,
     "botsubaru": 3030,
-    "www":       8080,
-    "task":      8081,
-    "habit":     8090,
-    "go":        8100,
-    "finance":   8200,
-    "stream":    9000
+    "www": 8080,
+    "task": 8081,
+    "habit": 8090,
+    "go": 8100,
+    "finance": 8200,
+    "stream": 9000
   },
-  "reserved_ports": [80, 443, 3030, 3031, 22, 8080],
+  "reserved_ports": [
+    80,
+    443,
+    3030,
+    3031,
+    22,
+    8080
+  ],
   "next_suggested_port": 8300
 }
