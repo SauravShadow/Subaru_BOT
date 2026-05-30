@@ -925,13 +925,44 @@ function detectEmotion(text) {
   return { pitchMod: 0, rateMod: 0 };
 }
 
+function summarizeForSpeech(text) {
+  // Strip all markdown formatting
+  const plain = text
+    .replace(/```[\s\S]*?```/g, "")          // fenced code blocks
+    .replace(/`[^`]+`/g, "")                 // inline code
+    .replace(/#{1,6}\s+/g, "")              // headings
+    .replace(/\*\*([^*]+)\*\*/g, "$1")      // bold
+    .replace(/\*([^*]+)\*/g, "$1")          // italic
+    .replace(/^\s*[-*+•]\s+/gm, "")         // bullet points
+    .replace(/\[([^\]]+)\]\([^)]+\)/g, "$1") // links → just label
+    .replace(/\n+/g, " ")                   // newlines to spaces
+    .replace(/\s{2,}/g, " ")               // collapse whitespace
+    .trim();
+
+  if (plain.length <= 130) return plain;
+
+  // Take first 2 sentences
+  const sentences = plain.match(/[^.!?]+[.!?]+/g) || [];
+  if (sentences.length >= 1) {
+    const summary = sentences.slice(0, 2).join(" ").trim();
+    return summary.length <= 160 ? summary : summary.slice(0, 157) + "…";
+  }
+  return plain.slice(0, 130) + "…";
+}
+
 function speakResponse(text, agentId) {
   if (!_ttsEnabled || !window.speechSynthesis || !text) return;
   speechSynthesis.cancel();
-  const clean   = text.replace(/```[\s\S]*?```/g, "code block").slice(0, 500);
-  const utter   = new SpeechSynthesisUtterance(clean);
+
+  // Pause recognition while TTS plays — Chrome can't run both simultaneously
+  if (_voiceEnabled && _recognition) {
+    try { _recognition.stop(); } catch(e) {}
+  }
+
+  const spoken  = summarizeForSpeech(text);
+  const utter   = new SpeechSynthesisUtterance(spoken);
   const profile = AGENT_VOICES[agentId] || AGENT_VOICES.ceo;
-  const emotion = detectEmotion(clean);
+  const emotion = detectEmotion(spoken);
   utter.lang    = profile.lang;
   utter.pitch   = Math.max(0.1, Math.min(2,  profile.pitch + emotion.pitchMod));
   utter.rate    = Math.max(0.5, Math.min(2,  profile.rate  + emotion.rateMod));
@@ -940,6 +971,14 @@ function speakResponse(text, agentId) {
   const voice   = voices.find(v => v.lang.startsWith(langPfx) && /google|microsoft/i.test(v.name))
                || voices.find(v => v.lang.startsWith(langPfx));
   if (voice) utter.voice = voice;
+
+  // Restart recognition once TTS finishes so voice stays active
+  utter.onend = () => {
+    if (_voiceEnabled && _recognition) {
+      try { _recognition.start(); } catch(e) {}
+    }
+  };
+
   speechSynthesis.speak(utter);
 }
 
