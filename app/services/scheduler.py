@@ -55,7 +55,7 @@ def _append_run_log(routine_id: str, status: str, output: str) -> None:
     logs: list[dict] = []
     if ROUTINE_LOGS_FILE.exists():
         try:
-            logs = json.loads(ROUTINE_LOGS_FILE.read_text())
+            logs = json.loads(ROUTINE_LOGS_FILE.read_text(encoding="utf-8"))
         except Exception:
             pass
     logs.append({
