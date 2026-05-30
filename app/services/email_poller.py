@@ -533,11 +533,59 @@ async def _safe_process(em: dict):
         logger.error("Error processing email from %s: %s", em.get("from_email"), exc)
 
 
+async def _check_approval_replies(emails: list) -> None:
+    """Scan incoming emails for APPROVE/DENY responses and process them."""
+    from app.services.self_heal import apply_approval, deny_approval, load_approvals
+    from app.api.websocket import broadcast_event
+
+    approvals = load_approvals()
+    if not approvals:
+        return
+
+    pending_ids = {k for k, v in approvals.items() if v.get("status") == "pending"}
+    if not pending_ids:
+        return
+
+    for email_item in emails:
+        text = (
+            str(email_item.get("subject", "")) + " " +
+            str(email_item.get("body",    ""))
+        ).upper()
+
+        for approval_id in list(pending_ids):
+            if f"APPROVE {approval_id}" in text:
+                ok, msg = apply_approval(approval_id)
+                if ok:
+                    await broadcast_event({
+                        "type":        "approval_applied",
+                        "approval_id": approval_id,
+                        "message":     msg,
+                        "source":      "email",
+                    })
+                    logger.info("Approval %s applied via email reply", approval_id)
+                    pending_ids.discard(approval_id)
+                break
+            elif f"DENY {approval_id}" in text:
+                ok, msg = deny_approval(approval_id)
+                if ok:
+                    await broadcast_event({
+                        "type":        "approval_denied",
+                        "approval_id": approval_id,
+                        "message":     msg,
+                        "source":      "email",
+                    })
+                    logger.info("Approval %s denied via email reply", approval_id)
+                    pending_ids.discard(approval_id)
+                break
+
+
 async def poll_once():
     """Single poll cycle. All emails in a batch are dispatched concurrently."""
     try:
         emails = await inbox.fetch_new_emails(max_emails=10)
         if emails:
+            # Check for approval replies first (fast, non-destructive)
+            await _check_approval_replies(emails)
             # Run all emails in parallel — each task uses its own CEO history
             await asyncio.gather(*[_safe_process(em) for em in emails])
     except Exception as exc:

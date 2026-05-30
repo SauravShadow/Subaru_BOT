@@ -17,6 +17,7 @@ from app.services.scheduler import (
     load_routines, save_routines, run_routine, get_routine_logs
 )
 from app.services.browser import navigate, take_screenshot, extract_text, click_element
+from app.services.self_heal import load_approvals, apply_approval, deny_approval
 
 router = APIRouter()
 
@@ -463,3 +464,36 @@ async def api_browser_click(body: dict):
     if "error" in result:
         return JSONResponse({"ok": False, **result}, status_code=422)
     return {"ok": True, **result}
+
+
+# ── Approvals ──────────────────────────────────────────────────────────────────
+
+@router.get("/api/approvals")
+async def api_approvals_list():
+    return load_approvals()
+
+
+@router.post("/api/approvals/{approval_id}/apply")
+async def api_approvals_apply(approval_id: str):
+    from app.api.websocket import broadcast_event
+    ok, msg = apply_approval(approval_id.upper())
+    if ok:
+        asyncio.create_task(broadcast_event({
+            "type":        "approval_applied",
+            "approval_id": approval_id.upper(),
+            "message":     msg,
+        }))
+    return {"ok": ok, "message": msg}
+
+
+@router.post("/api/approvals/{approval_id}/deny")
+async def api_approvals_deny(approval_id: str):
+    from app.api.websocket import broadcast_event
+    ok, msg = deny_approval(approval_id.upper())
+    if ok:
+        asyncio.create_task(broadcast_event({
+            "type":        "approval_denied",
+            "approval_id": approval_id.upper(),
+            "message":     msg,
+        }))
+    return {"ok": ok, "message": msg}
