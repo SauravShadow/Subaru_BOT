@@ -448,6 +448,8 @@ async def api_browser_extract(body: dict):
     if not url:
         return JSONResponse({"ok": False, "error": "url required"}, status_code=400)
     text = await extract_text(url, selector)
+    if text.startswith("[extract_text error:"):
+        return JSONResponse({"ok": False, "error": text}, status_code=422)
     return {"ok": True, "text": text}
 
 

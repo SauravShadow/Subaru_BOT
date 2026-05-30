@@ -194,7 +194,7 @@ def parse_tool_call(text: str) -> Tuple[Optional[str], Optional[dict]]:
         content = code_m.group(1) if code_m else text[m.end():].strip()
         return "write_preview", {"html_content": content}
 
-    m = re.search(r'\[WEB_NAVIGATE:\s*(.*?)\]', text, re.DOTALL)
+    m = re.search(r'\[WEB_NAVIGATE:\s*(\S+)\]', text)
     if m:
         return "web_navigate", {"url": m.group(1).strip()}
 

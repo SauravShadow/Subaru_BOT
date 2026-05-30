@@ -564,7 +564,9 @@ async def _execute_tool(
         elif tool_type == "web_navigate":
             from app.services.browser import navigate as _nav
             from app.api.websocket import broadcast_event
-            url      = tool_args.get("url", "")
+            url = tool_args.get("url", "")
+            if url and not url.startswith(("http://", "https://")):
+                url = "https://" + url
             result_d = await _nav(url)
             result   = str(result_d)
             asyncio.create_task(broadcast_event({
