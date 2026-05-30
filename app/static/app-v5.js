@@ -62,6 +62,8 @@ const WORKER_ORBITAL = {
 function renderWorkerCards() {
   const wrap  = $id("workers-wrap");
   if (!wrap) return;
+  Object.values(S.workerStatuses).forEach(ws => { if (ws?.interval) clearInterval(ws.interval); });
+  S.workerStatuses = {};
   wrap.innerHTML = "";
   const saved = JSON.parse(localStorage.getItem("workerPositions") || "{}");
   S.agentOrder.forEach(id => {
@@ -133,10 +135,13 @@ function setWorkerState(agentId, state, action = "") {
   const timerEl  = $id(`wcard-timer-${agentId}`);
   if (!card) return;
 
-  card.classList.remove("working");
+  if (state !== "working") {
+    card.classList.remove("working");
+  } else if (!card.classList.contains("working")) {
+    card.classList.add("working");
+  }
 
   if (state === "working") {
-    card.classList.add("working");
     if (actionEl) actionEl.textContent = action || "Working…";
     if (actionEl) actionEl.className = "wcard-action";
     if (statusEl) statusEl.style.display = "block";
@@ -156,8 +161,10 @@ function setWorkerState(agentId, state, action = "") {
     if (actionEl) { actionEl.textContent = "✓ Done"; actionEl.className = "wcard-action wcard-done"; }
     if (statusEl) statusEl.style.display = "block";
     setTimeout(() => {
-      if (statusEl) statusEl.style.display = "none";
-      if (actionEl) actionEl.className = "wcard-action";
+      const s = $id(`wcard-status-${agentId}`);
+      const a = $id(`wcard-action-${agentId}`);
+      if (s) s.style.display = "none";
+      if (a) a.className = "wcard-action";
     }, 1800);
 
   } else {
