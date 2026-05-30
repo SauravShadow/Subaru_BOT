@@ -701,6 +701,13 @@ let _voiceEnabled = false;
 let _voiceActive  = false;
 let _ttsEnabled   = true;
 
+function _setVoiceBtnColor(color) {
+  ["voice-btn", "voice-toggle-btn"].forEach(id => {
+    const el = $id(id);
+    if (el) el.style.color = color;
+  });
+}
+
 function initVoiceRecognition() {
   const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
   if (!SR) {
@@ -718,8 +725,7 @@ function initVoiceRecognition() {
 
     if (!_voiceActive && transcript.includes("hey subaru")) {
       _voiceActive = true;
-      const vb = $id("voice-btn");
-      if (vb) vb.style.color = "var(--cyan)";
+      _setVoiceBtnColor("var(--cyan)");
       pushNotif("🎤 Listening for command…", "success");
       setReactorState("thinking");
     }
@@ -729,8 +735,7 @@ function initVoiceRecognition() {
       if (cmd.length > 2) {
         sendMsgText(cmd);
         _voiceActive = false;
-        const vb = $id("voice-btn");
-        if (vb) vb.style.color = "";
+        _setVoiceBtnColor("");
         setReactorState("idle");
       }
     }
@@ -739,8 +744,7 @@ function initVoiceRecognition() {
   _recognition.onerror = (e) => {
     if (e.error !== "no-speech") pushNotif(`Voice error: ${e.error}`, "warn");
     _voiceActive = false;
-    const vb = $id("voice-btn");
-    if (vb) vb.style.color = "";
+    _setVoiceBtnColor("");
   };
 
   _recognition.onend = () => {
@@ -753,18 +757,17 @@ function initVoiceRecognition() {
 }
 
 function toggleVoiceMode() {
-  const btn = $id("voice-toggle-btn");
   if (_voiceEnabled) {
     _voiceEnabled = false;
     _voiceActive  = false;
     if (_recognition) { try { _recognition.stop(); } catch(e) {} }
-    if (btn) btn.style.color = "";
+    _setVoiceBtnColor("");
     pushNotif("Voice off", "warn");
   } else {
     if (!_recognition && !initVoiceRecognition()) return;
     _voiceEnabled = true;
     try { _recognition.start(); } catch(e) {}
-    if (btn) btn.style.color = "var(--cyan)";
+    _setVoiceBtnColor("var(--cyan)");
     pushNotif('🎤 Say "Hey Subaru" to activate', "success");
   }
 }
