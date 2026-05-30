@@ -423,6 +423,74 @@ async def run_gemini_agent(
         return await run_tgpt_agent(agent_id, prompt, send, "pollinations")
 
 
+async def run_claude_vision(
+    agent_id: str,
+    text: str,
+    images: list[dict],
+    send: Sender,
+) -> str:
+    """Multimodal Claude API call for image+text inputs.
+
+    Uses the Anthropic Python SDK directly (not Claude CLI) since the CLI
+    does not support image content blocks.
+
+    images: list of {media_type: str, data: str (base64)}
+    """
+    try:
+        import anthropic
+
+        content: list[dict] = []
+        for img in images:
+            content.append({
+                "type": "image",
+                "source": {
+                    "type":       "base64",
+                    "media_type": img["media_type"],
+                    "data":       img["data"],
+                },
+            })
+        content.append({
+            "type": "text",
+            "text": text or "What do you see in this image?",
+        })
+
+        client    = anthropic.AsyncAnthropic()
+        full_resp = ""
+
+        async with client.messages.stream(
+            model=config.DEFAULT_MODEL,
+            max_tokens=4096,
+            system=defs.agent_persona(agent_id),
+            messages=[{"role": "user", "content": content}],
+        ) as stream:
+            async for chunk in stream.text_stream:
+                await send({
+                    "type":    "assistant",
+                    "agent":   agent_id,
+                    "message": {"content": [{"type": "text", "text": chunk}]},
+                })
+                full_resp += chunk
+
+        try:
+            mem_svc.save_memory(agent_id, text, mem_type="vision_query",    importance=0.5)
+            if full_resp:
+                mem_svc.save_memory(agent_id, full_resp[:500], mem_type="vision_response", importance=0.4)
+        except Exception:
+            pass
+
+        return full_resp
+
+    except Exception as exc:
+        logger.warning("run_claude_vision failed: %s", exc)
+        error_msg = f"[vision error: {exc}]"
+        await send({
+            "type":    "assistant",
+            "agent":   agent_id,
+            "message": {"content": [{"type": "text", "text": error_msg}]},
+        })
+        return error_msg
+
+
 # ── Task-type classifier ───────────────────────────────────────────────────────
 
 _CLAUDE_SIGNALS = (

@@ -194,6 +194,26 @@ async def _handle_message(session: Session, agent_id: str, text: str) -> None:
     await session.send({"type": "done", "agent": agent_id})
 
 
+async def _handle_vision_message(
+    session: "Session",
+    agent_id: str,
+    text: str,
+    images: list[dict],
+) -> None:
+    """Handle a message with image attachments — routes to Claude Vision."""
+    from app.agents.executor import run_claude_vision
+
+    user_label = f"{text} [+{len(images)} image(s)]" if text else f"[{len(images)} image(s)]"
+    state.record(agent_id, "user", user_label)
+    send = session.make_sender(agent_id)
+
+    await session.send({"type": "thinking", "agent": agent_id})
+    full_resp = await run_claude_vision(agent_id, text, images, send)
+
+    state.record(agent_id, "assistant", full_resp)
+    await session.send({"type": "done", "agent": agent_id})
+
+
 async def _handle_force_complete(session: Session, task_id: int) -> None:
     item = state.force_complete_item(task_id)
     if item:
@@ -268,13 +288,22 @@ async def ws_endpoint(ws: WebSocket, model: str = Query(default="claude")) -> No
             msg_type = msg.get("type", "message")
 
             if msg_type == "message":
-                agent_id = msg.get("agent", "ceo")
-                text     = msg.get("text", "").strip()
-                if not text:
-                    continue
+                agent_id    = msg.get("agent", "ceo")
+                text        = msg.get("text", "").strip()
+                attachments = msg.get("attachments", [])
                 if agent_id not in defs.all_agents():
                     agent_id = "ceo"
-                await _handle_message(session, agent_id, text)
+                images = [
+                    a for a in attachments
+                    if a.get("media_type", "").startswith("image/")
+                    and a.get("data")
+                ]
+                if images and backend_state.should_use_claude():
+                    await _handle_vision_message(session, agent_id, text, images)
+                elif text:
+                    await _handle_message(session, agent_id, text)
+                else:
+                    continue
 
             elif msg_type == "model":
                 session.model = msg.get("model", "claude")
