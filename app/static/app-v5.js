@@ -152,6 +152,10 @@ const PALETTE_CMDS = [
     if (what) { switchAgent("frontend"); sendMsgText(`Design: ${what}`); showIsland("design"); }
   }},
   { icon:"🌐", label:"Open Browser Panel",  action: () => showIsland("browser") },
+  { icon:"🔊", label:"Toggle TTS (voice responses)", action: () => {
+    _ttsEnabled = !_ttsEnabled;
+    pushNotif(`TTS ${_ttsEnabled ? "on" : "off"}`, _ttsEnabled ? "success" : "warn");
+  }},
   { icon:"🔄", label:"Show Routines",        action: toggleRoutinesPanel },
   { icon:"▶",  label:"Run Morning Standup",  action: () => fetch("/api/routines/morning_standup/run", {method:"POST"}).then(()=>pushNotif("Standup triggered")) },
   { icon:"🧠", label:"Show Skills Panel",   action: toggleSkillsPanel },
@@ -222,16 +226,19 @@ function renderChat() {
         <div class="msg-avatar" style="background:${isUser?"var(--bg-elevated)":agent.color||"var(--cyan)"}">${isUser?"ME":escHtml(agent.avatar||"AI")}</div>
         <span>${isUser?"You":escHtml(agent.name||S.activeAgent)}</span>
       </div>
-      <div class="msg-body">${fmtMd(m.content||"")}</div>`;
+      <div class="msg-body">
+        ${(m.images||[]).map(img => `<img class="chat-image-thumb" src="data:${escHtml(img.media_type)};base64,${img.data}" alt="attached image">`).join("")}
+        ${fmtMd(m.content||"")}
+      </div>`;
     thread.appendChild(div);
   });
   thread.scrollTop = thread.scrollHeight;
   if (logs.length > 0) showChatMode();
 }
 
-function appendMsg(agentId, role, content) {
+function appendMsg(agentId, role, content, images) {
   if (!S.chatLogs[agentId]) S.chatLogs[agentId] = [];
-  S.chatLogs[agentId].push({ role, content });
+  S.chatLogs[agentId].push({ role, content, images: images || [] });
   if (agentId === S.activeAgent) renderChat();
 }
 
@@ -284,7 +291,8 @@ function sendMsgText(text) {
   if (S.attachments.length > 0)
     payload.attachments = S.attachments.map(a => ({ media_type: a.type, data: a.base64, name: a.name }));
   S.ws.send(JSON.stringify(payload));
-  appendMsg(S.activeAgent, "user", text + (S.attachments.length ? ` [+${S.attachments.length} file(s)]` : ""));
+  const imageAttachments = S.attachments.filter(a => a.type.startsWith("image/"));
+  appendMsg(S.activeAgent, "user", text, imageAttachments);
   showChatMode();
   setReactorState("thinking");
 }
@@ -308,8 +316,13 @@ function showIsland(name) {
     const iframe = $id("design-iframe");
     if (!iframe.src || iframe.src === location.origin + "/") iframe.src = "/static/previews/index.html";
   }
+  if (name === "browser") startBrowserAutoRefresh();
 }
-function hideIsland(name) { $id(`island-${name}`).style.display = "none"; }
+
+function hideIsland(name) {
+  $id(`island-${name}`).style.display = "none";
+  if (name === "browser") stopBrowserAutoRefresh();
+}
 
 function initDraggableIslands() {
   $$(".island").forEach(island => {
@@ -379,12 +392,16 @@ function dispatch(obj) {
       break;
 
     case "done":
-    case "worker_done":
+    case "worker_done": {
       setOrbState(agentId, "idle");
       setReactorState("idle");
       clearThinking();
       if (obj.summary) appendMsg(agentId, "assistant", `✓ ${obj.summary}`);
+      const agentLogs = S.chatLogs[agentId] || [];
+      const lastMsg   = [...agentLogs].reverse().find(m => m.role === "assistant");
+      if (lastMsg) speakResponse(lastMsg.content, agentId);
       break;
+    }
 
     case "backend_switch":
     case "backend_status":
@@ -444,6 +461,12 @@ function dispatch(obj) {
     case "cleared":
       S.chatLogs[agentId] = [];
       if (agentId === S.activeAgent) renderChat();
+      break;
+
+    case "browser_navigated":
+      browserRefreshScreenshot();
+      if ($id("browser-url-input") && obj.url) $id("browser-url-input").value = obj.url;
+      if ($id("browser-status")) $id("browser-status").textContent = `✓ ${obj.title || obj.url}`;
       break;
   }
 }
@@ -550,6 +573,151 @@ function showCreateRoutine() {
   });
 }
 
+// ── Browser Island ──────────────────────────────────────────────────────────
+let _browserRefreshInterval = null;
+
+async function browserNavigate() {
+  const input  = $id("browser-url-input");
+  const url    = input ? input.value.trim() : "";
+  if (!url) return;
+
+  const status = $id("browser-status");
+  if (status) status.textContent = "Navigating…";
+
+  try {
+    const r = await fetch("/api/browser/navigate", {
+      method: "POST",
+      headers: {"Content-Type": "application/json"},
+      body: JSON.stringify({ url }),
+    }).then(r => r.json());
+
+    if (r.ok) {
+      if (status) status.textContent = `✓ ${r.title || url}`;
+      browserRefreshScreenshot();
+    } else {
+      if (status) status.textContent = `✗ ${r.error || "Navigation failed"}`;
+    }
+  } catch(e) {
+    if (status) status.textContent = `✗ ${e.message}`;
+  }
+}
+
+function browserRefreshScreenshot() {
+  const img = $id("browser-screenshot");
+  if (!img) return;
+  img.src = `/static/previews/browser_screenshot.png?t=${Date.now()}`;
+}
+
+function startBrowserAutoRefresh() {
+  if (_browserRefreshInterval) return;
+  _browserRefreshInterval = setInterval(browserRefreshScreenshot, 2000);
+}
+
+function stopBrowserAutoRefresh() {
+  if (_browserRefreshInterval) {
+    clearInterval(_browserRefreshInterval);
+    _browserRefreshInterval = null;
+  }
+}
+
+// ── Voice Engine ────────────────────────────────────────────────────────────
+
+const AGENT_VOICES = {
+  ceo:      { lang: "en-GB", pitch: 0.9, rate: 0.95 },
+  frontend: { lang: "en-US", pitch: 1.1, rate: 1.0  },
+  backend:  { lang: "en-US", pitch: 0.7, rate: 0.85 },
+  qa:       { lang: "en-US", pitch: 1.0, rate: 0.9  },
+  devops:   { lang: "en-US", pitch: 0.8, rate: 0.9  },
+};
+
+let _recognition  = null;
+let _voiceEnabled = false;
+let _voiceActive  = false;
+let _ttsEnabled   = true;
+
+function initVoiceRecognition() {
+  const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
+  if (!SR) {
+    pushNotif("Speech recognition not supported in this browser", "warn");
+    return false;
+  }
+  _recognition = new SR();
+  _recognition.continuous     = true;
+  _recognition.interimResults = true;
+  _recognition.lang           = "en-US";
+
+  _recognition.onresult = (event) => {
+    const transcript = Array.from(event.results)
+      .map(r => r[0].transcript).join("").toLowerCase().trim();
+
+    if (!_voiceActive && transcript.includes("hey subaru")) {
+      _voiceActive = true;
+      const vb = $id("voice-btn");
+      if (vb) vb.style.color = "var(--cyan)";
+      pushNotif("🎤 Listening for command…", "success");
+      setReactorState("thinking");
+    }
+
+    if (_voiceActive && event.results[event.results.length - 1].isFinal) {
+      const cmd = transcript.replace(/hey subaru/gi, "").trim();
+      if (cmd.length > 2) {
+        sendMsgText(cmd);
+        _voiceActive = false;
+        const vb = $id("voice-btn");
+        if (vb) vb.style.color = "";
+        setReactorState("idle");
+      }
+    }
+  };
+
+  _recognition.onerror = (e) => {
+    if (e.error !== "no-speech") pushNotif(`Voice error: ${e.error}`, "warn");
+    _voiceActive = false;
+    const vb = $id("voice-btn");
+    if (vb) vb.style.color = "";
+  };
+
+  _recognition.onend = () => {
+    if (_voiceEnabled) {
+      try { _recognition.start(); } catch(e) {}
+    }
+  };
+
+  return true;
+}
+
+function toggleVoiceMode() {
+  const btn = $id("voice-toggle-btn");
+  if (_voiceEnabled) {
+    _voiceEnabled = false;
+    _voiceActive  = false;
+    if (_recognition) { try { _recognition.stop(); } catch(e) {} }
+    if (btn) btn.style.color = "";
+    pushNotif("Voice off", "warn");
+  } else {
+    if (!_recognition && !initVoiceRecognition()) return;
+    _voiceEnabled = true;
+    try { _recognition.start(); } catch(e) {}
+    if (btn) btn.style.color = "var(--cyan)";
+    pushNotif('🎤 Say "Hey Subaru" to activate', "success");
+  }
+}
+
+function speakResponse(text, agentId) {
+  if (!_ttsEnabled || !window.speechSynthesis || !text) return;
+  speechSynthesis.cancel();
+  const clean = text.replace(/```[\s\S]*?```/g, "code block").slice(0, 500);
+  const utter  = new SpeechSynthesisUtterance(clean);
+  const profile = AGENT_VOICES[agentId] || AGENT_VOICES.ceo;
+  utter.lang    = profile.lang;
+  utter.pitch   = profile.pitch;
+  utter.rate    = profile.rate;
+  const voices  = speechSynthesis.getVoices();
+  const match   = voices.find(v => v.lang.startsWith(profile.lang.split("-")[0]));
+  if (match) utter.voice = match;
+  speechSynthesis.speak(utter);
+}
+
 // ── Keyboard ─────────────────────────────────────────────────────────
 document.addEventListener("keydown", e => {
   if ((e.metaKey || e.ctrlKey) && e.key === "k") { e.preventDefault(); togglePalette(); return; }
@@ -571,6 +739,8 @@ document.addEventListener("DOMContentLoaded", () => {
   inp.addEventListener("input",   () => { inp.style.height = "auto"; inp.style.height = Math.min(inp.scrollHeight, 120) + "px"; });
   inp.addEventListener("keydown", e => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); sendMsg(); } });
   $id("palette-input").addEventListener("input", e => { paletteIdx = 0; renderPaletteResults(e.target.value); });
+  const urlInput = $id("browser-url-input");
+  if (urlInput) urlInput.addEventListener("keydown", e => { if (e.key === "Enter") browserNavigate(); });
   initFileInput();
   initDraggableIslands();
   boot();

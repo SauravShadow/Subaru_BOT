@@ -29,6 +29,7 @@
     <button class="pill pill-skills" id="routines-pill" title="Routines" onclick="toggleRoutinesPanel()" style="display:none">
       <span id="routines-active-count">0</span> Routines
     </button>
+    <button class="pill pill-icon" id="voice-toggle-btn" title="Toggle voice (Hey Subaru)" onclick="toggleVoiceMode()">🎤</button>
     <button class="pill pill-icon" id="notif-btn" title="Notifications" onclick="toggleNotif()">🔔</button>
   </div>
 </header>
@@ -138,8 +139,16 @@
 </div>
 
 <div class="island island-browser" id="island-browser" style="display:none">
-  <div class="island-header" id="island-browser-header">Browser <button onclick="hideIsland('browser')">✕</button></div>
-  <img id="browser-screenshot" src="" alt="Browser screenshot">
+  <div class="island-header" id="island-browser-header">
+    <span>Browser</span>
+    <button onclick="hideIsland('browser')">✕</button>
+  </div>
+  <div class="browser-urlbar">
+    <input type="text" id="browser-url-input" placeholder="https://example.com" class="browser-url-field">
+    <button class="btn-run" onclick="browserNavigate()" style="white-space:nowrap">Go</button>
+  </div>
+  <div id="browser-status" style="font-size:10px;color:var(--muted);padding:2px 6px;height:16px"></div>
+  <img id="browser-screenshot" src="" alt="Browser screenshot" style="display:block">
 </div>
 
 <script src="/static/app-v5.js"></script>
