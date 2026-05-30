@@ -188,6 +188,12 @@ def parse_tool_call(text: str) -> Tuple[Optional[str], Optional[dict]]:
         if tm and rm:
             return "edit", {"path": path, "target": tm.group(1), "replacement": rm.group(1)}
 
+    m = re.search(r'\[WRITE_PREVIEW:\s*\]', text, re.DOTALL)
+    if m:
+        code_m = re.search(r'```(?:html)?\n(.*?)```', text[m.end():], re.DOTALL)
+        content = code_m.group(1) if code_m else text[m.end():].strip()
+        return "write_preview", {"html_content": content}
+
     return None, None
 
 

@@ -500,18 +500,20 @@ async def _execute_tool(
     from app.services import email as email_svc  # lazy import
 
     icon_map = {
-        "bash":       "⚙",
-        "read":       "📖",
-        "write":      "✍",
-        "edit":       "✏",
-        "read_inbox": "📬",
+        "bash":          "⚙",
+        "read":          "📖",
+        "write":         "✍",
+        "edit":          "✏",
+        "read_inbox":    "📬",
+        "write_preview": "🎨",
     }
     label_map = {
-        "bash":       "Executing Bash",
-        "read":       "Reading File",
-        "write":      "Writing File",
-        "edit":       "Editing File",
-        "read_inbox": "Reading Inbox",
+        "bash":          "Executing Bash",
+        "read":          "Reading File",
+        "write":         "Writing File",
+        "edit":          "Editing File",
+        "read_inbox":    "Reading Inbox",
+        "write_preview": "Writing Design Preview",
     }
 
     path  = tool_args.get("path", tool_args.get("cmd", ""))
@@ -536,6 +538,15 @@ async def _execute_tool(
         elif tool_type == "read_inbox":
             data   = await email_svc.read_emails(max_emails=5, unread_only=True)
             result = json.dumps(data, indent=2)
+        elif tool_type == "write_preview":
+            from app.services.browser import write_preview as _wp
+            from app.api.websocket import broadcast_event
+            html = tool_args.get("html_content", tool_args.get("content", ""))
+            result = _wp(html)
+            asyncio.create_task(broadcast_event({
+                "type":    "design_preview_updated",
+                "message": result,
+            }))
         else:
             handler = skill_loader.get_tool(tool_type)
             if handler:

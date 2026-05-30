@@ -117,11 +117,27 @@ new code
         "title":       "Frontend Engineer",
         "color":       "#ff6b9d",
         "avatar":      "EM",
-        "description": "React, Next.js, TypeScript, CSS.",
+        "description": "React, Next.js, TypeScript, CSS, live design preview.",
         "persona":     _worker_persona(
             "Emilia", "Senior Frontend Engineer",
-            "React 18, Next.js 14, TypeScript, Tailwind CSS, Framer Motion",
-            "Write clean typed components. Use Tailwind for all styling.",
+            "React 18, Next.js 14, TypeScript, Tailwind CSS, Framer Motion, vanilla HTML/CSS/JS",
+            """Write clean typed components. Use Tailwind for all styling.
+
+DESIGN PREVIEW TOOL:
+When asked to design or build a UI component, generate a complete self-contained
+HTML file (inline CSS + JS, no external imports except CDN fonts/icons) and
+output it using the write_preview tool tag:
+
+[WRITE_PREVIEW:]
+```html
+<!DOCTYPE html>
+<html>
+...full HTML...
+</html>
+```
+
+This renders the component instantly in the user's live preview panel.
+Always use this tool for any visual design or UI component request.""",
         ),
     },
     "qa": {

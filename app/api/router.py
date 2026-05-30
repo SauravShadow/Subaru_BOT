@@ -386,3 +386,21 @@ async def api_routines_run(routine_id: str):
 @router.get("/api/routines/{routine_id}/logs")
 async def api_routines_logs(routine_id: str, limit: int = 10):
     return get_routine_logs(routine_id, limit)
+
+
+# ── Design Preview ─────────────────────────────────────────────────────────────
+
+@router.post("/api/design/preview")
+async def api_design_preview(request: Request, body: dict):
+    """Write HTML directly to the design preview (localhost-only)."""
+    client_host = request.client.host if request.client else ""
+    if client_host not in ("127.0.0.1", "::1", "localhost"):
+        return JSONResponse({"ok": False, "error": "Restricted to localhost"}, status_code=403)
+    html = body.get("html", "")
+    if not html.strip():
+        return JSONResponse({"ok": False, "error": "html field is required"}, status_code=400)
+    from app.services.browser import write_preview
+    from app.api.websocket import broadcast_event
+    result = write_preview(html)
+    asyncio.create_task(broadcast_event({"type": "design_preview_updated", "message": result}))
+    return {"ok": True, "message": result}
