@@ -4,6 +4,7 @@ const S = {
   ws: null, agents: {}, agentOrder: [], activeAgent: "ceo",
   backend: "claude", chatLogs: {}, statuses: {},
   workQueue: [], attachments: [], reconnTimer: null, skills: [],
+  workerStatuses: {},
 };
 
 const $  = sel => document.querySelector(sel);
@@ -49,39 +50,131 @@ function showChatMode() {
   $id("chat-main").style.display = "block";
 }
 
-// ── Agent Orbs ─────────────────────────────────────────────────────
-function renderOrbs() {
-  const wrap = $id("orbs-wrap");
+// ── Worker Cards ───────────────────────────────────────────────────
+const WORKER_ORBITAL = {
+  ceo:      { left: "46%", top: "12%" },
+  backend:  { left: "76%", top: "35%" },
+  frontend: { left: "65%", top: "68%" },
+  qa:       { left: "28%", top: "68%" },
+  devops:   { left: "18%", top: "35%" },
+};
+
+function renderWorkerCards() {
+  const wrap  = $id("workers-wrap");
+  if (!wrap) return;
   wrap.innerHTML = "";
+  const saved = JSON.parse(localStorage.getItem("workerPositions") || "{}");
   S.agentOrder.forEach(id => {
-    const a = S.agents[id];
-    const orb = document.createElement("div");
-    orb.className = "orb" + (id === S.activeAgent ? " active" : "");
-    orb.id = `orb-${id}`;
-    orb.style.setProperty("--agent-color", a.color);
-    orb.innerHTML = `${escHtml(a.avatar || id.slice(0,2).toUpperCase())}
-      <div class="orb-tooltip">
-        <div class="orb-tooltip-name">${escHtml(a.name)}</div>
-        <div class="orb-tooltip-title">${escHtml(a.title)}</div>
+    const a   = S.agents[id];
+    const pos = saved[id] || WORKER_ORBITAL[id] || { left: "50%", top: "50%" };
+    const card = document.createElement("div");
+    card.className = "worker-card" + (id === S.activeAgent ? " selected" : "");
+    card.id = `wcard-${id}`;
+    card.style.setProperty("--agent-color", a.color);
+    card.style.left = pos.left;
+    card.style.top  = pos.top;
+    card.innerHTML = `
+      <div class="wcard-handle" id="wcard-handle-${id}">
+        <div class="wcard-avatar">${escHtml(a.avatar || id.slice(0,2).toUpperCase())}</div>
+        <div class="wcard-info">
+          <div class="wcard-name">${escHtml(a.name)}</div>
+          <div class="wcard-role">${escHtml(a.title)}</div>
+        </div>
+      </div>
+      <div class="wcard-status" id="wcard-status-${id}" style="display:none">
+        <div class="wcard-action" id="wcard-action-${id}">—</div>
+        <div class="wcard-timer"  id="wcard-timer-${id}">0:00</div>
       </div>`;
-    orb.onclick = () => switchAgent(id);
-    wrap.appendChild(orb);
+    initWorkerDrag(id, card);
+    wrap.appendChild(card);
   });
 }
 
-function setOrbState(agentId, state) {
-  const orb = $id(`orb-${agentId}`);
-  if (!orb) return;
-  orb.classList.remove("thinking", "active");
-  if (state === "thinking") orb.classList.add("thinking");
-  if (agentId === S.activeAgent || state === "thinking") orb.classList.add("active");
+function initWorkerDrag(agentId, card) {
+  const handle = card.querySelector(".wcard-handle");
+  handle.addEventListener("mousedown", e => {
+    if (e.button !== 0) return;
+    e.preventDefault();
+    let moved    = false;
+    const startX = e.clientX, startY = e.clientY;
+    const rect   = card.getBoundingClientRect();
+    card.style.left = rect.left + "px";
+    card.style.top  = rect.top  + "px";
+    const startL = rect.left, startT = rect.top;
+
+    const onMove = e2 => {
+      const dx = e2.clientX - startX, dy = e2.clientY - startY;
+      if (Math.abs(dx) > 4 || Math.abs(dy) > 4) moved = true;
+      if (moved) {
+        card.style.left = (startL + dx) + "px";
+        card.style.top  = (startT + dy) + "px";
+      }
+    };
+    const onUp = () => {
+      document.removeEventListener("mousemove", onMove);
+      document.removeEventListener("mouseup",   onUp);
+      if (!moved) {
+        switchAgent(agentId);
+      } else {
+        const positions = JSON.parse(localStorage.getItem("workerPositions") || "{}");
+        positions[agentId] = { left: card.style.left, top: card.style.top };
+        localStorage.setItem("workerPositions", JSON.stringify(positions));
+      }
+    };
+    document.addEventListener("mousemove", onMove);
+    document.addEventListener("mouseup",   onUp);
+  });
+}
+
+function setWorkerState(agentId, state, action = "") {
+  const card     = $id(`wcard-${agentId}`);
+  const statusEl = $id(`wcard-status-${agentId}`);
+  const actionEl = $id(`wcard-action-${agentId}`);
+  const timerEl  = $id(`wcard-timer-${agentId}`);
+  if (!card) return;
+
+  card.classList.remove("working");
+
+  if (state === "working") {
+    card.classList.add("working");
+    if (actionEl) actionEl.textContent = action || "Working…";
+    if (actionEl) actionEl.className = "wcard-action";
+    if (statusEl) statusEl.style.display = "block";
+    if (!S.workerStatuses[agentId]) {
+      S.workerStatuses[agentId] = { startTime: Date.now() };
+      S.workerStatuses[agentId].interval = setInterval(() => {
+        const secs = Math.floor((Date.now() - S.workerStatuses[agentId].startTime) / 1000);
+        if (timerEl) timerEl.textContent = `${Math.floor(secs/60)}:${String(secs%60).padStart(2,"0")}`;
+      }, 1000);
+    } else if (action) {
+      if (actionEl) actionEl.textContent = action;
+    }
+
+  } else if (state === "done") {
+    if (S.workerStatuses[agentId]?.interval) clearInterval(S.workerStatuses[agentId].interval);
+    delete S.workerStatuses[agentId];
+    if (actionEl) { actionEl.textContent = "✓ Done"; actionEl.className = "wcard-action wcard-done"; }
+    if (statusEl) statusEl.style.display = "block";
+    setTimeout(() => {
+      if (statusEl) statusEl.style.display = "none";
+      if (actionEl) actionEl.className = "wcard-action";
+    }, 1800);
+
+  } else {
+    if (S.workerStatuses[agentId]?.interval) clearInterval(S.workerStatuses[agentId].interval);
+    delete S.workerStatuses[agentId];
+    if (statusEl) statusEl.style.display = "none";
+  }
 }
 
 function switchAgent(id) {
   S.activeAgent = id;
   const a = S.agents[id];
   $id("cmdbar-badge").textContent = a?.avatar || id.slice(0,3).toUpperCase();
-  renderOrbs();
+  S.agentOrder.forEach(aid => {
+    const card = $id(`wcard-${aid}`);
+    if (card) card.classList.toggle("selected", aid === id);
+  });
   renderChat();
 }
 
@@ -393,12 +486,12 @@ function dispatch(obj) {
       S.agentOrder.forEach(id => { if (!S.chatLogs[id]) S.chatLogs[id] = []; });
       if (obj.skills) { S.skills = obj.skills; $id("skills-count").textContent = S.skills.length; }
       if (obj.backend) updateBackendPill(obj.backend);
-      renderOrbs();
+      renderWorkerCards();
       updateQueuePill();
       break;
 
     case "thinking":
-      setOrbState(agentId, "thinking");
+      setWorkerState(agentId, "working", "Thinking…");
       setReactorState("thinking");
       addThinkingStep(`${S.agents[agentId]?.name || agentId} thinking…`);
       break;
@@ -416,17 +509,22 @@ function dispatch(obj) {
       break;
     }
 
-    case "tool_call":
+    case "tool_call": {
+      const toolLabel = obj.tool === "ask_agent"
+        ? `↔ ${obj.path || "agent"}`
+        : `${obj.label || obj.tool}${obj.path ? ": " + obj.path : ""}`;
+      setWorkerState(agentId, "working", toolLabel);
       if (obj.tool === "ask_agent") {
         addThinkingStep(`↔ Asking ${obj.path || "agent"}…`, "active");
       } else {
         addThinkingStep(`${obj.label || obj.tool}: ${obj.path || ""}`, "active");
       }
       break;
+    }
 
     case "done":
     case "worker_done": {
-      setOrbState(agentId, "idle");
+      setWorkerState(agentId, "done");
       setReactorState("idle");
       clearThinking();
       if (obj.summary) appendMsg(agentId, "assistant", `✓ ${obj.summary}`);
