@@ -4,3 +4,4 @@ __pycache__/
 *.pyc
 .venv/
 market_data/
+app/static/previews/
