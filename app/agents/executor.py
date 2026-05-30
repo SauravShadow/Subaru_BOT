@@ -699,42 +699,45 @@ async def _execute_tool(
 
             file_path = tool_args.get("path", "")
             content   = tool_args.get("content", "")
-            zone      = classify_path(file_path)
+            if not content.strip():
+                result = "[write_source error: empty content — provide a fenced code block after the tag]"
+            else:
+                zone      = classify_path(file_path)
 
-            if zone == "immutable":
-                result = (
-                    f"[BLOCKED] {file_path} is in the immutable core — "
-                    "it cannot be modified by any agent."
-                )
-            elif zone in ("surface", "learning"):
-                resolved = _resolve(file_path)
-                if not _safe(resolved):
-                    result = "[BLOCKED] Path is outside the workspace."
-                else:
-                    result = local_write(file_path, content)
+                if zone == "immutable":
+                    result = (
+                        f"[BLOCKED] {file_path} is in the immutable core — "
+                        "it cannot be modified by any agent."
+                    )
+                elif zone in ("surface", "learning"):
+                    resolved = _resolve(file_path)
+                    if not _safe(resolved):
+                        result = "[BLOCKED] Path is outside the workspace."
+                    else:
+                        result = local_write(file_path, content)
+                        asyncio.create_task(broadcast_event({
+                            "type":  "source_file_modified",
+                            "path":  file_path,
+                            "zone":  zone,
+                            "agent": agent_id,
+                        }))
+                else:  # protected — email gate
+                    resolved    = _resolve(file_path)
+                    approval_id = create_approval(file_path, content, agent_id, resolved)
+                    stored_diff = load_approvals().get(approval_id, {}).get("diff", "")
+                    subj, body  = build_approval_email(approval_id, file_path, agent_id, stored_diff)
+                    asyncio.create_task(email_svc_sh.send_mail(subj, body))
                     asyncio.create_task(broadcast_event({
-                        "type":  "source_file_modified",
-                        "path":  file_path,
-                        "zone":  zone,
-                        "agent": agent_id,
+                        "type":        "approval_requested",
+                        "approval_id": approval_id,
+                        "file_path":   file_path,
+                        "agent":       agent_id,
                     }))
-            else:  # protected — email gate
-                resolved    = _resolve(file_path)
-                approval_id = create_approval(file_path, content, agent_id, resolved)
-                stored_diff = load_approvals().get(approval_id, {}).get("diff", "")
-                subj, body  = build_approval_email(approval_id, file_path, agent_id, stored_diff)
-                asyncio.create_task(email_svc_sh.send_mail(subj, body))
-                asyncio.create_task(broadcast_event({
-                    "type":        "approval_requested",
-                    "approval_id": approval_id,
-                    "file_path":   file_path,
-                    "agent":       agent_id,
-                }))
-                result = (
-                    f"Change pending approval (ID: {approval_id}). "
-                    f"Email sent to {config.USER_EMAIL}. "
-                    f"Reply 'APPROVE {approval_id}' or 'DENY {approval_id}'."
-                )
+                    result = (
+                        f"Change pending approval (ID: {approval_id}). "
+                        f"Email sent to {config.USER_EMAIL}. "
+                        f"Reply 'APPROVE {approval_id}' or 'DENY {approval_id}'."
+                    )
 
         elif tool_type == "run_tests":
             result = await local_bash(
