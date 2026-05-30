@@ -216,6 +216,21 @@ def parse_tool_call(text: str) -> Tuple[Optional[str], Optional[dict]]:
             "question": m.group(2).strip(),
         }
 
+    m = re.search(r'\[READ_SOURCE:\s*(.*?)\]', text, re.DOTALL)
+    if m:
+        return "read_source", {"path": m.group(1).strip()}
+
+    m = re.search(r'\[WRITE_SOURCE:\s*(.*?)\]', text, re.DOTALL)
+    if m:
+        path = m.group(1).strip()
+        code_m = re.search(r'```(?:\w+)?\n(.*?)```', text[m.end():], re.DOTALL)
+        content = code_m.group(1) if code_m else text[m.end():].strip()
+        return "write_source", {"path": path, "content": content}
+
+    m = re.search(r'\[RUN_TESTS\]', text)
+    if m:
+        return "run_tests", {}
+
     return None, None
 
 

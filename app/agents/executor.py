@@ -138,6 +138,10 @@ AVAILABLE TOOLS:
 11. [ASK:agent_id] question    — Ask another agent a question mid-task; their reply is injected back
     Agents: ceo, backend, frontend, qa, devops
     Example: [ASK:ceo] Should I use Postgres or SQLite for this?
+12. [READ_SOURCE: /app/app/agents/executor.py]  — Read any source file in /app/
+13. [WRITE_SOURCE: /app/app/services/foo.py]    — Write/modify source file (zone-checked)
+    Follow with: ```python\n<content>\n```
+14. [RUN_TESTS]                                  — Run pytest and return pass/fail summary
 
 Always state your approach in 2 sentences before calling your first tool.
 """
@@ -589,6 +593,9 @@ async def _execute_tool(
         "web_screenshot": "📸",
         "web_extract":    "🔍",
         "ask_agent":     "💬",
+        "read_source":  "📋",
+        "write_source": "🔧",
+        "run_tests":    "🧪",
     }
     label_map = {
         "bash":          "Executing Bash",
@@ -601,6 +608,9 @@ async def _execute_tool(
         "web_screenshot": "Taking Screenshot",
         "web_extract":    "Extracting Text",
         "ask_agent":     "Asking agent",
+        "read_source":  "Reading Source",
+        "write_source": "Writing Source",
+        "run_tests":    "Running Tests",
     }
 
     path  = tool_args.get("path", tool_args.get("cmd", tool_args.get("target", tool_args.get("url", ""))))
@@ -675,6 +685,62 @@ async def _execute_tool(
                     f"[{target} timed out after {int(_ASK_TIMEOUT)}s — "
                     f"proceeding with best judgement]"
                 )
+
+        elif tool_type == "read_source":
+            result = local_read(tool_args.get("path", ""))
+
+        elif tool_type == "write_source":
+            from app.services.self_heal import (
+                classify_path, create_approval, build_approval_email, load_approvals,
+            )
+            from app.services import email as email_svc_sh
+            from app.api.websocket import broadcast_event
+            from app.agents.tools import _resolve, _safe
+
+            file_path = tool_args.get("path", "")
+            content   = tool_args.get("content", "")
+            zone      = classify_path(file_path)
+
+            if zone == "immutable":
+                result = (
+                    f"[BLOCKED] {file_path} is in the immutable core — "
+                    "it cannot be modified by any agent."
+                )
+            elif zone in ("surface", "learning"):
+                resolved = _resolve(file_path)
+                if not _safe(resolved):
+                    result = "[BLOCKED] Path is outside the workspace."
+                else:
+                    result = local_write(file_path, content)
+                    asyncio.create_task(broadcast_event({
+                        "type":  "source_file_modified",
+                        "path":  file_path,
+                        "zone":  zone,
+                        "agent": agent_id,
+                    }))
+            else:  # protected — email gate
+                resolved    = _resolve(file_path)
+                approval_id = create_approval(file_path, content, agent_id, resolved)
+                stored_diff = load_approvals().get(approval_id, {}).get("diff", "")
+                subj, body  = build_approval_email(approval_id, file_path, agent_id, stored_diff)
+                asyncio.create_task(email_svc_sh.send_mail(subj, body))
+                asyncio.create_task(broadcast_event({
+                    "type":        "approval_requested",
+                    "approval_id": approval_id,
+                    "file_path":   file_path,
+                    "agent":       agent_id,
+                }))
+                result = (
+                    f"Change pending approval (ID: {approval_id}). "
+                    f"Email sent to {config.USER_EMAIL}. "
+                    f"Reply 'APPROVE {approval_id}' or 'DENY {approval_id}'."
+                )
+
+        elif tool_type == "run_tests":
+            result = await local_bash(
+                "python -m pytest /app/tests/ -q --tb=short --no-header 2>&1 | tail -20"
+            )
+
         else:
             handler = skill_loader.get_tool(tool_type)
             if handler:
