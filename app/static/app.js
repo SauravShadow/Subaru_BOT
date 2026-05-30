@@ -395,27 +395,45 @@ function dispatch(obj) {
       clearThinking();
       const content = obj.message?.content || [];
       let text = content.map(b => b.type === "text" ? b.text : "").join("");
-      if (!text.trim()) break;
+      // Extract images from content blocks
+      const images = content.filter(b => b.type === "image" && b.data);
+
+      console.log("[IMG DEBUG] assistant event:", { agent, textLen: text.length, imageCount: images.length, contentTypes: content.map(c => c.type) });
+
+      if (!text.trim() && images.length === 0) break;
 
       if (agent === S.activeAgent) {
-        // Stream in character by character
         const msgs = $id("messages");
         if (msgs) {
           const color = agentColor(agent);
           const animeSvg = getAnimeAvatar(agent);
-          const row = document.createElement("div");
-          row.className = "msg-row assistant";
-          row.innerHTML = `<div class="msg-av" style="background:${color}15;border-color:${color}44;">${animeSvg || `<span style="color:${color};font-size:10px;font-weight:700;">${agentAvatar(agent)}</span>`}</div><div class="msg-bubble"></div>`;
-          msgs.appendChild(row);
+
+          // Render images first if any
+          for (const img of images) {
+            const row = document.createElement("div");
+            row.className = "msg-row assistant";
+            row.innerHTML = `<div class="msg-av" style="background:${color}15;border-color:${color}44;">${animeSvg || `<span style="color:${color};font-size:10px;font-weight:700;">${agentAvatar(agent)}</span>`}</div><div class="msg-bubble" style="padding:8px;"><img src="data:${img.media_type || 'image/png'};base64,${img.data}" style="max-width:100%;border-radius:8px;cursor:pointer;" onclick="window.open(this.src,'_blank')" alt="Generated image" /></div>`;
+            msgs.appendChild(row);
+          }
+
+          // Render text if any
+          if (text.trim()) {
+            const row = document.createElement("div");
+            row.className = "msg-row assistant";
+            row.innerHTML = `<div class="msg-av" style="background:${color}15;border-color:${color}44;">${animeSvg || `<span style="color:${color};font-size:10px;font-weight:700;">${agentAvatar(agent)}</span>`}</div><div class="msg-bubble"></div>`;
+            msgs.appendChild(row);
+            const bubble = row.querySelector(".msg-bubble");
+            startStreaming(agent, bubble);
+            feedStream(agent, text);
+          }
           msgs.scrollTop = msgs.scrollHeight;
-          const bubble = row.querySelector(".msg-bubble");
-          startStreaming(agent, bubble);
-          feedStream(agent, text);
         }
         if (!S.chatLogs[agent]) S.chatLogs[agent] = [];
-        S.chatLogs[agent].push({ role: "assistant", content: text, ts: new Date().toISOString(), type: "text" });
+        const logContent = images.length > 0 ? `[🎨 Image generated]\n${text}` : text;
+        S.chatLogs[agent].push({ role: "assistant", content: logContent, ts: new Date().toISOString(), type: "text" });
       } else {
-        pushMsg(agent, "assistant", text);
+        if (images.length > 0) pushMsg(agent, "assistant", `[🎨 Image generated]\n${text}`);
+        else pushMsg(agent, "assistant", text);
         bumpUnread(agent);
       }
       break;

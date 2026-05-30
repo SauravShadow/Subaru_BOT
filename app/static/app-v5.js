@@ -383,9 +383,18 @@ function dispatch(obj) {
       addThinkingStep(`${S.agents[agentId]?.name || agentId} thinking…`);
       break;
 
-    case "assistant":
-      (obj.message?.content || []).forEach(b => { if (b.type === "text" && b.text) appendMsg(agentId, "assistant", b.text); });
+    case "assistant": {
+      const content = obj.message?.content || [];
+      const texts = content.filter(b => b.type === "text" && b.text).map(b => b.text);
+      const images = content.filter(b => b.type === "image" && b.data).map(b => ({
+        media_type: b.media_type || "image/png",
+        data: b.data
+      }));
+      if (texts.length > 0 || images.length > 0) {
+        appendMsg(agentId, "assistant", texts.join("\n"), images);
+      }
       break;
+    }
 
     case "tool_call":
       if (obj.tool === "ask_agent") {

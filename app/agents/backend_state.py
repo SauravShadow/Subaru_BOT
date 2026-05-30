@@ -11,7 +11,7 @@ from typing import Optional
 logger = logging.getLogger(__name__)
 
 CLAUDE_RETRY_MINUTES: int = 30
-GEMINI_RETRY_MINUTES: int = 5
+GEMINI_RETRY_SECONDS: int = 5
 
 _quota_exhausted_at:  Optional[datetime] = None
 _gemini_failed_at:    Optional[datetime] = None
@@ -39,7 +39,7 @@ def should_use_gemini() -> bool:
         return False
     if _gemini_failed_at is None:
         return True
-    return datetime.now() >= _gemini_failed_at + timedelta(minutes=GEMINI_RETRY_MINUTES)
+    return datetime.now() >= _gemini_failed_at + timedelta(seconds=GEMINI_RETRY_SECONDS)
 
 
 def gemini_available() -> bool:
@@ -51,7 +51,7 @@ def gemini_available() -> bool:
         return False
     if _gemini_failed_at is None:
         return True
-    return datetime.now() >= _gemini_failed_at + timedelta(minutes=GEMINI_RETRY_MINUTES)
+    return datetime.now() >= _gemini_failed_at + timedelta(seconds=GEMINI_RETRY_SECONDS)
 
 
 def retry_due_at() -> Optional[datetime]:

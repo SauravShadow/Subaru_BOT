@@ -16,7 +16,7 @@ from app import config
 from app.agents import backend_state, definitions as defs
 from app.agents.tools import (
     local_bash, local_read, local_write, local_edit,
-    parse_tool_call, summarize_output,
+    parse_tool_call, summarize_output, generate_image,
 )
 from app.state import manager as state
 import pytz as _pytz
@@ -142,6 +142,8 @@ AVAILABLE TOOLS:
 13. [WRITE_SOURCE: /app/app/services/foo.py]    — Write/modify source file (zone-checked)
     Follow with: ```python\n<content>\n```
 14. [RUN_TESTS]                                  — Run pytest and return pass/fail summary
+15. [GENERATE_IMAGE: description of the image]   — Generate an image from a text prompt
+    Example: [GENERATE_IMAGE: A futuristic city skyline at sunset, cyberpunk style]
 
 Always state your approach in 2 sentences before calling your first tool.
 """
@@ -171,6 +173,11 @@ def _build_claude_prompt(agent_id: str, user_msg: str) -> str:
         f"{persona}\n\n"
         f"Working directory: {config.WORK_DIR}"
         f"{context}{live_ctx}\n"
+        f"IMAGE GENERATION: When the user asks you to generate, create, or make an image, "
+        f"output this tag in your response and the system will generate it:\n"
+        f"  [GENERATE_IMAGE: detailed description of the image to generate]\n"
+        f"  Example: [GENERATE_IMAGE: A futuristic Tokyo skyline at sunset with neon lights]\n"
+        f"Do NOT write Python/Pillow scripts for image generation — use the tag instead.\n\n"
         f"Conversation History:\n{hist_str}\n\n"
         f"User: {user_msg}"
     )
@@ -239,14 +246,14 @@ async def _run_tgpt_turn(
         # Blacklist this provider for 5 minutes (300 seconds)
         _provider_blacklist[active_p] = _time() + 300.0
         
-        # Log retry if we have other providers left to try
         remaining = [p for p in providers if p != active_p]
         if remaining:
             await send({
-                "type": "assistant", "agent": agent_id,
-                "message": {"content": [{"type": "text", "text":
-                    f"\n[Retrying with provider '{active_p}' → rate limited, switching...]\n"
-                }]},
+                "type": "tool_call",
+                "agent": agent_id,
+                "tool": "fallback",
+                "label": "Switching Provider",
+                "path": f"rate limited on '{active_p}', trying next"
             })
 
     return "\n✕ All providers hit rate limits. Please wait and retry.\n"
@@ -270,11 +277,7 @@ async def run_tgpt_agent(
         full_input = _build_tgpt_prompt(agent_id, current_prompt)
         turn_text  = await _run_tgpt_turn(full_input, agent_id, send, provider)
 
-        await send({
-            "type":    "assistant",
-            "agent":   agent_id,
-            "message": {"content": [{"type": "text", "text": turn_text}]},
-        })
+
 
         full_resp += turn_text
         tool_type, tool_args = parse_tool_call(turn_text)
@@ -292,14 +295,6 @@ async def run_tgpt_agent(
         # Execute tool
         tool_result = await _execute_tool(agent_id, tool_type, tool_args, send)
 
-        # Stream summarised output
-        await send({
-            "type": "assistant", "agent": agent_id,
-            "message": {"content": [{"type": "text", "text":
-                f"[Tool Output]:\n{summarize_output(tool_result)}\n\n"
-            }]},
-        })
-
         state.record(agent_id, "assistant", turn_text + f"\n[Tool Output]:\n{tool_result}\n\n")
         current_prompt = (
             f"Tool '{tool_type}' executed. Results:\n{tool_result}\n\nPlease proceed."
@@ -311,6 +306,26 @@ async def run_tgpt_agent(
             mem_svc.save_memory(agent_id, full_resp[:500], mem_type="agent_response", importance=0.3)
     except Exception:
         pass
+
+    # Send the final response at the end of the tgpt execution
+    if full_resp.strip():
+        import re as _re
+        clean_resp = full_resp.strip()
+        clean_resp = _re.sub(r'\[GENERATE_IMAGE:\s*.*?\]', '', clean_resp, flags=_re.DOTALL).strip()
+        clean_resp = _re.sub(r'\[DONE:\s*.*?\]', '', clean_resp, flags=_re.DOTALL).strip()
+        clean_resp = _re.sub(r'\[Tool Output\]:.*', '', clean_resp, flags=_re.DOTALL).strip()
+        
+        # Fall back to last turn_text if clean_resp is completely empty
+        if not clean_resp and 'turn_text' in locals() and turn_text.strip():
+            clean_resp = _re.sub(r'\[(DONE|GENERATE_IMAGE):\s*.*?\]', '', turn_text, flags=_re.DOTALL).strip()
+            
+        if clean_resp:
+            await send({
+                "type":    "assistant",
+                "agent":   agent_id,
+                "message": {"content": [{"type": "text", "text": clean_resp}]},
+            })
+
     return full_resp
 
 
@@ -346,7 +361,10 @@ async def run_claude_agent(
             continue
         try:
             obj = json.loads(line)
-            await send({"_raw_json": line, "agent": agent_id})
+            # Only stream tool calls to the frontend as thinking steps;
+            # do not stream intermediate assistant text to avoid cluttering the chat.
+            if obj.get("type") != "assistant" and obj.get("message", {}).get("role") != "assistant":
+                await send({"_raw_json": line, "agent": agent_id})
             if obj.get("type") == "assistant":
                 for blk in obj.get("message", {}).get("content", []):
                     if blk.get("type") == "text":
@@ -383,13 +401,76 @@ async def run_claude_agent(
                 await send({"type": "backend_status", "agent": agent_id,
                             **backend_state.status_dict()})
 
+        # Send the final compiled, clean response at the end of successful execution
+        if full_resp.strip():
+            import re as _re
+            clean_resp = full_resp.strip()
+            clean_resp = _re.sub(r'\[GENERATE_IMAGE:\s*.*?\]', '', clean_resp, flags=_re.DOTALL).strip()
+            clean_resp = _re.sub(r'\[DONE:\s*.*?\]', '', clean_resp, flags=_re.DOTALL).strip()
+            
+            await send({
+                "type":    "assistant",
+                "agent":   agent_id,
+                "message": {"content": [{"type": "text", "text": clean_resp}]},
+            })
+
     try:
         mem_svc.save_memory(agent_id, prompt, mem_type="user_query", importance=0.4)
         if full_resp.strip():
             mem_svc.save_memory(agent_id, full_resp[:500], mem_type="agent_response", importance=0.3)
     except Exception:
         pass
+
+    # Check if Claude wants to generate an image
+    import re as _re
+    img_match = _re.search(r'\[GENERATE_IMAGE:\s*(.*?)\]', full_resp, _re.DOTALL)
+    if img_match:
+        img_prompt = img_match.group(1).strip()
+        await send({"type": "tool_call", "agent": agent_id,
+                    "tool": "generate_image", "label": "Generating Image",
+                    "path": img_prompt[:60]})
+        img_result = await generate_image(img_prompt)
+        if img_result.get("ok"):
+            await send({
+                "type":    "assistant",
+                "agent":   agent_id,
+                "message": {"content": [{
+                    "type":       "image",
+                    "media_type": img_result["mime_type"],
+                    "data":       img_result["data"],
+                }]},
+            })
+
     return full_resp
+
+
+def _build_gemini_prompt(agent_id: str, user_msg: str) -> str:
+    """Prompt for Gemini API — conversational only, no tool syntax."""
+    agent   = defs.get_agent(agent_id)
+    persona = defs.agent_persona(agent_id)
+    history = state.get_history(agent_id)
+
+    # Strip tool-related instructions from persona for Gemini
+    # (Gemini can't execute tools, so it just prints them as text)
+    clean_persona = persona.split("AVAILABLE TOOLS:")[0] if "AVAILABLE TOOLS:" in persona else persona
+
+    hist_str = "\n".join(
+        f"{'User' if h['role'] == 'user' else agent['name']}: {_truncate_content(h['content'])}"
+        for h in history[-(config.MAX_HISTORY):]
+    )
+
+    live_ctx = _build_context_block(agent_id, user_msg)
+    return (
+        f"{clean_persona}\n\n"
+        f"IMPORTANT: You are responding via Gemini API (limited tool access). "
+        f"Answer conversationally and helpfully. Do NOT output [BASH:], [READ:], [WRITE:], "
+        f"[DELEGATE:], or any other tool tags.\n"
+        f"EXCEPTION: You CAN use [GENERATE_IMAGE: description] to generate images. "
+        f"Example: [GENERATE_IMAGE: A futuristic city skyline at sunset, cyberpunk neon lights]\n"
+        f"{live_ctx}\n"
+        f"Conversation History:\n{hist_str}\n\n"
+        f"User: {user_msg}"
+    )
 
 
 async def run_gemini_agent(
@@ -403,20 +484,48 @@ async def run_gemini_agent(
             raise ValueError("GEMINI_API_KEY not configured — skipping Gemini")
         import google.genai as genai
         client = genai.Client(api_key=config.GEMINI_API_KEY)
-        full_prompt = _build_claude_prompt(agent_id, prompt)
+        full_prompt = _build_gemini_prompt(agent_id, prompt)
         response = await asyncio.to_thread(
             client.models.generate_content,
-            model="gemini-2.0-flash",
+            model="gemini-3.5-flash",
             contents=full_prompt,
         )
         text = (response.text or "").strip()
         if not text:
             raise ValueError("Empty Gemini response")
+        import re as _re
+        display_text = _re.sub(r'\[GENERATE_IMAGE:\s*.*?\]', '', text, flags=_re.DOTALL).strip()
         await send({
             "type":    "assistant",
             "agent":   agent_id,
-            "message": {"content": [{"type": "text", "text": text}]},
+            "message": {"content": [{"type": "text", "text": display_text}]},
         })
+
+        # Check if Gemini wants to generate an image
+        import re as _re
+        img_match = _re.search(r'\[GENERATE_IMAGE:\s*(.*?)\]', text, _re.DOTALL)
+        if img_match:
+            img_prompt = img_match.group(1).strip()
+            logger.info("🎨 GENERATE_IMAGE detected: %s", img_prompt[:80])
+            await send({"type": "tool_call", "agent": agent_id,
+                        "tool": "generate_image", "label": "Generating Image",
+                        "path": img_prompt[:60]})
+            img_result = await generate_image(img_prompt)
+            logger.info("🎨 Image result: ok=%s, size=%s", img_result.get("ok"), img_result.get("size", img_result.get("error")))
+            if img_result.get("ok"):
+                await send({
+                    "type":    "assistant",
+                    "agent":   agent_id,
+                    "message": {"content": [{
+                        "type":       "image",
+                        "media_type": img_result["mime_type"],
+                        "data":       img_result["data"],
+                    }]},
+                })
+                logger.info("🎨 Image sent to frontend!")
+        else:
+            logger.info("No GENERATE_IMAGE tag found in response (len=%d)", len(text))
+
         try:
             mem_svc.save_memory(agent_id, prompt, mem_type="user_query", importance=0.4)
             mem_svc.save_memory(agent_id, text[:500], mem_type="agent_response", importance=0.3)
@@ -432,73 +541,131 @@ async def run_gemini_agent(
         return await run_tgpt_agent(agent_id, prompt, send, "pollinations")
 
 
+
 async def run_claude_vision(
     agent_id: str,
     text: str,
     images: list[dict],
     send: Sender,
 ) -> str:
-    """Multimodal Claude API call for image+text inputs.
-
-    Uses the Anthropic Python SDK directly (not Claude CLI) since the CLI
-    does not support image content blocks.
+    """Multimodal vision — tries Anthropic SDK, falls back to Gemini 3.5 Flash.
 
     images: list of {media_type: str, data: str (base64)}
     """
-    try:
-        import anthropic
+    query_label = text or "What do you see in this image?"
 
-        content: list[dict] = []
-        for img in images:
-            content.append({
-                "type": "image",
-                "source": {
-                    "type":       "base64",
-                    "media_type": img["media_type"],
-                    "data":       img["data"],
-                },
-            })
-        content.append({
-            "type": "text",
-            "text": text or "What do you see in this image?",
-        })
-
-        client    = anthropic.AsyncAnthropic()
-        full_resp = ""
-
-        async with client.messages.stream(
-            model=config.DEFAULT_MODEL,
-            max_tokens=4096,
-            system=defs.agent_persona(agent_id),
-            messages=[{"role": "user", "content": content}],
-        ) as stream:
-            async for chunk in stream.text_stream:
-                await send({
-                    "type":    "assistant",
-                    "agent":   agent_id,
-                    "message": {"content": [{"type": "text", "text": chunk}]},
-                })
-                full_resp += chunk
-
+    # ── Attempt 1: Anthropic SDK (needs ANTHROPIC_API_KEY) ──
+    anthropic_key = os.environ.get("ANTHROPIC_API_KEY", "")
+    if anthropic_key:
         try:
-            query_label = text if text else "What do you see in this image?"
-            mem_svc.save_memory(agent_id, query_label, mem_type="vision_query", importance=0.5)
-            if full_resp:
-                mem_svc.save_memory(agent_id, full_resp[:500], mem_type="vision_response", importance=0.4)
-        except Exception:
-            pass
+            import anthropic
 
-        return full_resp
+            content: list[dict] = []
+            for img in images:
+                content.append({
+                    "type": "image",
+                    "source": {
+                        "type":       "base64",
+                        "media_type": img["media_type"],
+                        "data":       img["data"],
+                    },
+                })
+            content.append({"type": "text", "text": query_label})
 
-    except Exception as exc:
-        logger.warning("run_claude_vision failed: %s", exc)
-        error_msg = f"[vision error: {exc}]"
-        await send({
-            "type":    "assistant",
-            "agent":   agent_id,
-            "message": {"content": [{"type": "text", "text": error_msg}]},
-        })
-        return error_msg
+            client    = anthropic.AsyncAnthropic(api_key=anthropic_key)
+            full_resp = ""
+
+            async with client.messages.stream(
+                model=config.DEFAULT_MODEL,
+                max_tokens=4096,
+                system=defs.agent_persona(agent_id),
+                messages=[{"role": "user", "content": content}],
+            ) as stream:
+                async for chunk in stream.text_stream:
+                    await send({
+                        "type":    "assistant",
+                        "agent":   agent_id,
+                        "message": {"content": [{"type": "text", "text": chunk}]},
+                    })
+                    full_resp += chunk
+
+            try:
+                mem_svc.save_memory(agent_id, query_label, mem_type="vision_query", importance=0.5)
+                if full_resp:
+                    mem_svc.save_memory(agent_id, full_resp[:500], mem_type="vision_response", importance=0.4)
+            except Exception:
+                pass
+            return full_resp
+
+        except Exception as exc:
+            logger.warning("Anthropic vision failed (%s) — trying Gemini", exc)
+
+    # ── Attempt 2: Gemini 3.5 Flash multimodal vision ──
+    if config.GEMINI_API_KEY:
+        try:
+            import google.genai as genai
+            from google.genai import types as genai_types
+
+            client = genai.Client(api_key=config.GEMINI_API_KEY)
+
+            # Build multimodal parts: images + text
+            parts = []
+            for img in images:
+                parts.append(genai_types.Part.from_bytes(
+                    data=__import__("base64").b64decode(img["data"]),
+                    mime_type=img["media_type"],
+                ))
+            parts.append(genai_types.Part.from_text(text=query_label))
+
+            persona = defs.agent_persona(agent_id)
+            clean_persona = persona.split("AVAILABLE TOOLS:")[0] if "AVAILABLE TOOLS:" in persona else persona
+
+            response = await asyncio.to_thread(
+                client.models.generate_content,
+                model="gemini-3.5-flash",
+                contents=[genai_types.Content(role="user", parts=parts)],
+                config=genai_types.GenerateContentConfig(
+                    system_instruction=clean_persona[:2000],
+                ),
+            )
+            full_resp = (response.text or "").strip()
+            if not full_resp:
+                raise ValueError("Empty Gemini vision response")
+
+            await send({
+                "type":    "assistant",
+                "agent":   agent_id,
+                "message": {"content": [{"type": "text", "text": full_resp}]},
+            })
+            try:
+                mem_svc.save_memory(agent_id, query_label, mem_type="vision_query", importance=0.5)
+                if full_resp:
+                    mem_svc.save_memory(agent_id, full_resp[:500], mem_type="vision_response", importance=0.4)
+            except Exception:
+                pass
+            return full_resp
+
+        except Exception as exc:
+            logger.warning("Gemini vision failed: %s", exc)
+            error_msg = f"[Vision error: Gemini failed — {exc}]"
+            await send({
+                "type":    "assistant",
+                "agent":   agent_id,
+                "message": {"content": [{"type": "text", "text": error_msg}]},
+            })
+            return error_msg
+
+    # ── No vision backend available ──
+    error_msg = (
+        "⚠️ Image analysis unavailable — no ANTHROPIC_API_KEY or GEMINI_API_KEY configured. "
+        "Please send a text-only message."
+    )
+    await send({
+        "type":    "assistant",
+        "agent":   agent_id,
+        "message": {"content": [{"type": "text", "text": error_msg}]},
+    })
+    return error_msg
 
 
 # ── Task-type classifier ───────────────────────────────────────────────────────
@@ -552,9 +719,21 @@ async def run_agent(
       2. Task-type classification → ideal model.
       3. Quota/availability fallback: Claude → Gemini → tgpt.
     """
+    async def _notify_backend(backend_name: str) -> None:
+        """Tell the frontend which backend is handling this request."""
+        prev = backend_state.get_current_backend()
+        if prev != backend_name:
+            await send({"type": "backend_status", "agent": agent_id,
+                        "backend": backend_name,
+                        "quota_ok": backend_state._quota_exhausted_at is None,
+                        "gemini_ok": backend_state._gemini_failed_at is None,
+                        "retry_at": None})
+
     if model == "chatgpt":
+        await _notify_backend("tgpt")
         return await run_tgpt_agent(agent_id, prompt, send, "sky")
     if model == "gemini":
+        await _notify_backend("gemini")
         return await run_gemini_agent(agent_id, prompt, send)
 
     ideal = _classify_model(prompt)
@@ -562,17 +741,24 @@ async def run_agent(
     if ideal == "gemini":
         # Prefer Gemini for this task type
         if backend_state.gemini_available():
+            await _notify_backend("gemini")
             return await run_gemini_agent(agent_id, prompt, send)
         if backend_state.should_use_claude():
+            await _notify_backend("claude")
             return await run_claude_agent(agent_id, prompt, send)
+        await _notify_backend("tgpt")
         return await run_tgpt_agent(agent_id, prompt, send, "pollinations")
 
     # ideal == "claude" (default)
     if backend_state.should_use_claude():
+        await _notify_backend("claude")
         return await run_claude_agent(agent_id, prompt, send)
     if backend_state.gemini_available():
+        await _notify_backend("gemini")
         return await run_gemini_agent(agent_id, prompt, send)
+    await _notify_backend("tgpt")
     return await run_tgpt_agent(agent_id, prompt, send, "pollinations")
+
 
 
 # ── Internal tool dispatcher ───────────────────────────────────────────────────
@@ -593,9 +779,10 @@ async def _execute_tool(
         "web_screenshot": "📸",
         "web_extract":    "🔍",
         "ask_agent":     "💬",
-        "read_source":  "📋",
-        "write_source": "🔧",
-        "run_tests":    "🧪",
+        "read_source":   "📋",
+        "write_source":  "🔧",
+        "run_tests":     "🧪",
+        "generate_image": "🎨",
     }
     label_map = {
         "bash":          "Executing Bash",
@@ -608,9 +795,10 @@ async def _execute_tool(
         "web_screenshot": "Taking Screenshot",
         "web_extract":    "Extracting Text",
         "ask_agent":     "Asking agent",
-        "read_source":  "Reading Source",
-        "write_source": "Writing Source",
-        "run_tests":    "Running Tests",
+        "read_source":    "Reading Source",
+        "write_source":   "Writing Source",
+        "run_tests":      "Running Tests",
+        "generate_image": "Generating Image",
     }
 
     path  = tool_args.get("path", tool_args.get("cmd", tool_args.get("target", tool_args.get("url", ""))))
@@ -743,6 +931,24 @@ async def _execute_tool(
             result = await local_bash(
                 "python -m pytest /app/tests/ -q --tb=short --no-header 2>&1 | tail -20"
             )
+
+        elif tool_type == "generate_image":
+            prompt = tool_args.get("prompt", "")
+            img_result = await generate_image(prompt)
+            if img_result.get("ok"):
+                # Send the image inline to the frontend
+                await send({
+                    "type":    "assistant",
+                    "agent":   agent_id,
+                    "message": {"content": [{
+                        "type":       "image",
+                        "media_type": img_result["mime_type"],
+                        "data":       img_result["data"],
+                    }]},
+                })
+                result = f"Image generated successfully ({img_result['size']} bytes)"
+            else:
+                result = f"[Image generation failed: {img_result.get('error', 'unknown')}]"
 
         else:
             handler = skill_loader.get_tool(tool_type)
