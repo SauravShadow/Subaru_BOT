@@ -38,6 +38,8 @@ def _truncate_content(text: str, max_chars: int = 8000) -> str:
     return text[:half] + f"\n... [Truncated {len(text) - max_chars} characters of old output] ...\n" + text[-half:]
 
 
+_ASK_TIMEOUT: float = 120.0   # seconds before inter-agent ask times out
+
 _ceo_context_cache: tuple = (0.0, "")
 _CEO_CONTEXT_TTL = 60.0
 
@@ -133,6 +135,9 @@ AVAILABLE TOOLS:
 8. [WEB_NAVIGATE: https://url]  — Navigate browser to URL, take screenshot
 9. [WEB_EXTRACT: https://url selector]  — Extract text from CSS selector on page
 10. [WEB_SCREENSHOT]            — Take screenshot of current browser page
+11. [ASK:agent_id] question    — Ask another agent a question mid-task; their reply is injected back
+    Agents: ceo, backend, frontend, qa, devops
+    Example: [ASK:ceo] Should I use Postgres or SQLite for this?
 
 Always state your approach in 2 sentences before calling your first tool.
 """
@@ -583,6 +588,7 @@ async def _execute_tool(
         "web_navigate":   "🌐",
         "web_screenshot": "📸",
         "web_extract":    "🔍",
+        "ask_agent":     "💬",
     }
     label_map = {
         "bash":          "Executing Bash",
@@ -594,6 +600,7 @@ async def _execute_tool(
         "web_navigate":   "Navigating Browser",
         "web_screenshot": "Taking Screenshot",
         "web_extract":    "Extracting Text",
+        "ask_agent":     "Asking agent",
     }
 
     path  = tool_args.get("path", tool_args.get("cmd", ""))
@@ -653,6 +660,21 @@ async def _execute_tool(
             url      = tool_args.get("url", "")
             selector = tool_args.get("selector", "body")
             result   = await _ex(url, selector)
+        elif tool_type == "ask_agent":
+            target   = tool_args.get("target", "ceo")
+            question = tool_args.get("question", "")
+
+            try:
+                reply = await asyncio.wait_for(
+                    run_agent(target, question, send),
+                    timeout=_ASK_TIMEOUT,
+                )
+                result = (reply or "").strip() or f"[{target} sent no text reply]"
+            except asyncio.TimeoutError:
+                result = (
+                    f"[{target} timed out after {int(_ASK_TIMEOUT)}s — "
+                    f"proceeding with best judgement]"
+                )
         else:
             handler = skill_loader.get_tool(tool_type)
             if handler:

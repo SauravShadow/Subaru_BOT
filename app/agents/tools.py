@@ -209,6 +209,13 @@ def parse_tool_call(text: str) -> Tuple[Optional[str], Optional[dict]]:
     if m:
         return "web_screenshot", {}
 
+    m = re.search(r'\[ASK:(\w+)\]\s*([\s\S]+?)(?=\[|$)', text)
+    if m:
+        return "ask_agent", {
+            "target":   m.group(1).strip().lower(),
+            "question": m.group(2).strip(),
+        }
+
     return None, None
 
 
