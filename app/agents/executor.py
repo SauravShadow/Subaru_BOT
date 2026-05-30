@@ -816,6 +816,10 @@ async def _execute_tool(
         "web_navigate":   "🌐",
         "web_screenshot": "📸",
         "web_extract":    "🔍",
+        "web_click":      "🖱",
+        "web_type":       "⌨",
+        "web_wait":       "⏳",
+        "web_get_text":   "📄",
         "ask_agent":     "💬",
         "read_source":   "📋",
         "write_source":  "🔧",
@@ -832,6 +836,10 @@ async def _execute_tool(
         "web_navigate":   "Navigating Browser",
         "web_screenshot": "Taking Screenshot",
         "web_extract":    "Extracting Text",
+        "web_click":      "Clicking Element",
+        "web_type":       "Typing Text",
+        "web_wait":       "Waiting for Element",
+        "web_get_text":   "Reading Page",
         "ask_agent":     "Asking agent",
         "read_source":    "Reading Source",
         "write_source":   "Writing Source",
@@ -893,9 +901,62 @@ async def _execute_tool(
             result   = str(result_d)
         elif tool_type == "web_extract":
             from app.services.browser import extract_text as _ex
+            from app.services.browser import navigate as _nav
             url      = tool_args.get("url", "")
             selector = tool_args.get("selector", "body")
-            result   = await _ex(url, selector)
+            if url:
+                await _nav(url)
+            result = await _ex(selector)
+
+        elif tool_type == "web_click":
+            from app.services.browser import click_element as _click
+            from app.api.websocket import broadcast_event
+            selector = tool_args.get("selector", "")
+            result_d = await _click(selector)
+            result   = str(result_d)
+            if result_d.get("screenshot"):
+                asyncio.create_task(broadcast_event({
+                    "type":       "browser_navigated",
+                    "screenshot": result_d.get("screenshot", ""),
+                    "title":      result_d.get("title", ""),
+                    "url":        result_d.get("url", ""),
+                }))
+
+        elif tool_type == "web_type":
+            from app.services.browser import type_text as _type
+            from app import config as _cfg
+            selector = tool_args.get("selector", "")
+            raw_text = tool_args.get("text", "")
+            if raw_text.startswith("$CRED_"):
+                cred_key = raw_text[6:]
+                resolved = _cfg.get_credential(cred_key)
+                if not resolved:
+                    result = f"[web_type: credential '{raw_text}' not set — add CRED_{cred_key} to env]"
+                else:
+                    result_d = await _type(selector, resolved)
+                    result   = str(result_d) + " [credential used]"
+            else:
+                result_d = await _type(selector, raw_text)
+                result   = str(result_d)
+
+        elif tool_type == "web_wait":
+            from app.services.browser import wait_for_element as _wait
+            selector = tool_args.get("selector", "body")
+            result_d = await _wait(selector)
+            result   = str(result_d)
+
+        elif tool_type == "web_get_text":
+            from app.services.browser import get_page_text as _gpt
+            from app.api.websocket import broadcast_event
+            result_d = await _gpt()
+            result   = str(result_d)
+            if result_d.get("screenshot"):
+                asyncio.create_task(broadcast_event({
+                    "type":       "browser_navigated",
+                    "screenshot": result_d.get("screenshot", ""),
+                    "title":      result_d.get("title", ""),
+                    "url":        result_d.get("url", ""),
+                }))
         elif tool_type == "ask_agent":
             target   = tool_args.get("target", "ceo")
             question = tool_args.get("question", "")
