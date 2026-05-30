@@ -787,11 +787,11 @@ function stopBrowserAutoRefresh() {
 // ── Voice Engine ────────────────────────────────────────────────────────────
 
 const AGENT_VOICES = {
-  ceo:      { lang: "en-GB", pitch: 0.9, rate: 0.95 },
-  frontend: { lang: "en-US", pitch: 1.1, rate: 1.0  },
-  backend:  { lang: "en-US", pitch: 0.7, rate: 0.85 },
-  qa:       { lang: "en-US", pitch: 1.0, rate: 0.9  },
-  devops:   { lang: "en-US", pitch: 0.8, rate: 0.9  },
+  ceo:      { lang: "en-GB", pitch: 0.90, rate: 0.95 },
+  frontend: { lang: "en-US", pitch: 1.10, rate: 1.00 },
+  backend:  { lang: "en-US", pitch: 0.70, rate: 0.85 },
+  qa:       { lang: "en-US", pitch: 1.00, rate: 0.90 },
+  devops:   { lang: "en-US", pitch: 0.80, rate: 0.90 },
 };
 
 let _cachedVoices = [];
@@ -806,11 +806,15 @@ let _voiceEnabled = false;
 let _voiceActive  = false;
 let _ttsEnabled   = true;
 
-function _setVoiceBtnColor(color) {
-  ["voice-btn", "voice-toggle-btn"].forEach(id => {
-    const el = $id(id);
-    if (el) el.style.color = color;
-  });
+function _syncVoiceUI() {
+  const cyan  = "var(--cyan)";
+  const green = "var(--green)";
+  const off   = "";
+  // Header pill reflects always-on mode; cmdbar btn reflects active listening
+  const hdr = $id("voice-toggle-btn");
+  const cmd = $id("voice-btn");
+  if (hdr) hdr.style.color = _voiceActive ? cyan : _voiceEnabled ? green : off;
+  if (cmd) cmd.style.color = _voiceActive ? cyan : off;
 }
 
 function initVoiceRecognition() {
@@ -821,35 +825,42 @@ function initVoiceRecognition() {
   }
   _recognition = new SR();
   _recognition.continuous     = true;
-  _recognition.interimResults = true;
+  _recognition.interimResults = false; // final results only — more reliable on Linux Chrome
   _recognition.lang           = "en-US";
 
   _recognition.onresult = (event) => {
-    const transcript = Array.from(event.results)
-      .map(r => r[0].transcript).join("").toLowerCase().trim();
+    // Only use the latest result from this session (not accumulated history)
+    const result     = event.results[event.results.length - 1];
+    const transcript = result[0].transcript.toLowerCase().trim();
 
     if (!_voiceActive && transcript.includes("hey subaru")) {
       _voiceActive = true;
-      _setVoiceBtnColor("var(--cyan)");
+      _syncVoiceUI();
       pushNotif("🎤 Listening for command…", "success");
       setReactorState("thinking");
+      return;
     }
 
-    if (_voiceActive && event.results[event.results.length - 1].isFinal) {
+    if (_voiceActive && result.isFinal) {
       const cmd = transcript.replace(/hey subaru/gi, "").trim();
-      if (cmd.length > 2) {
+      if (cmd.length > 1) {
         sendMsgText(cmd);
         _voiceActive = false;
-        _setVoiceBtnColor("");
+        _syncVoiceUI();
         setReactorState("idle");
       }
     }
   };
 
   _recognition.onerror = (e) => {
-    if (e.error !== "no-speech") pushNotif(`Voice error: ${e.error}`, "warn");
+    if (e.error === "not-allowed") {
+      pushNotif("Microphone access denied — allow mic permission in Chrome", "error");
+      _voiceEnabled = false;
+    } else if (e.error !== "no-speech") {
+      pushNotif(`Voice error: ${e.error}`, "warn");
+    }
     _voiceActive = false;
-    _setVoiceBtnColor("");
+    _syncVoiceUI();
   };
 
   _recognition.onend = () => {
@@ -861,20 +872,57 @@ function initVoiceRecognition() {
   return true;
 }
 
+// Header pill: toggle always-on wake-word mode
 function toggleVoiceMode() {
   if (_voiceEnabled) {
     _voiceEnabled = false;
     _voiceActive  = false;
     if (_recognition) { try { _recognition.stop(); } catch(e) {} }
-    _setVoiceBtnColor("");
+    _syncVoiceUI();
     pushNotif("Voice off", "warn");
   } else {
     if (!_recognition && !initVoiceRecognition()) return;
     _voiceEnabled = true;
     try { _recognition.start(); } catch(e) {}
-    _setVoiceBtnColor("var(--cyan)");
-    pushNotif('🎤 Say "Hey Subaru" to activate', "success");
+    _syncVoiceUI();
+    pushNotif('🎤 Always-on: say "Hey Subaru [command]"', "success");
   }
+}
+
+// Cmdbar button: push-to-talk (no wake word needed)
+function handleVoiceBtnClick() {
+  if (_voiceActive) {
+    // Cancel current recording
+    _voiceActive = false;
+    _syncVoiceUI();
+    setReactorState("idle");
+    return;
+  }
+  // Ensure recognition is running
+  if (!_recognition && !initVoiceRecognition()) return;
+  if (!_voiceEnabled) {
+    _voiceEnabled = true;
+    try { _recognition.start(); } catch(e) {}
+  }
+  // Skip wake word — go straight to listening
+  _voiceActive = true;
+  _syncVoiceUI();
+  setReactorState("thinking");
+  pushNotif("🎤 Speak now…", "success");
+}
+
+// Detect emotional tone from response text for expressive TTS
+function detectEmotion(text) {
+  const t = text.toLowerCase();
+  if (/\b(error|fail|sorry|can't|cannot|unable|problem|broke|wrong|unfortunate)\b/.test(t))
+    return { pitchMod: -0.12, rateMod: -0.10 }; // concerned — slower, lower
+  if (/[!]|✓|\b(done|success|complet|great|amazing|excellent|perfect|awesome|wonderful)\b/.test(t))
+    return { pitchMod:  0.15, rateMod:  0.08 }; // excited — higher, faster
+  if (/\b(hmm|let me|consider|perhaps|maybe|might|thinking|wonder|interesting)\b/.test(t))
+    return { pitchMod:  0.05, rateMod: -0.07 }; // thoughtful — slightly higher, slower
+  if (/\b(warning|careful|caution|critical|urgent|important|note)\b/.test(t))
+    return { pitchMod: -0.05, rateMod: -0.05 }; // cautious — slightly lower, slower
+  return { pitchMod: 0, rateMod: 0 };
 }
 
 function speakResponse(text, agentId) {
@@ -883,14 +931,15 @@ function speakResponse(text, agentId) {
   const clean   = text.replace(/```[\s\S]*?```/g, "code block").slice(0, 500);
   const utter   = new SpeechSynthesisUtterance(clean);
   const profile = AGENT_VOICES[agentId] || AGENT_VOICES.ceo;
+  const emotion = detectEmotion(clean);
   utter.lang    = profile.lang;
-  utter.pitch   = profile.pitch;
-  utter.rate    = profile.rate;
+  utter.pitch   = Math.max(0.1, Math.min(2,  profile.pitch + emotion.pitchMod));
+  utter.rate    = Math.max(0.5, Math.min(2,  profile.rate  + emotion.rateMod));
   const voices  = _cachedVoices.length ? _cachedVoices : speechSynthesis.getVoices();
-  const langPrefix = profile.lang.split("-")[0];
-  const preferred  = voices.find(v => v.lang.startsWith(langPrefix) && /google|microsoft/i.test(v.name))
-                  || voices.find(v => v.lang.startsWith(langPrefix));
-  if (preferred) utter.voice = preferred;
+  const langPfx = profile.lang.split("-")[0];
+  const voice   = voices.find(v => v.lang.startsWith(langPfx) && /google|microsoft/i.test(v.name))
+               || voices.find(v => v.lang.startsWith(langPfx));
+  if (voice) utter.voice = voice;
   speechSynthesis.speak(utter);
 }
 
