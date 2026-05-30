@@ -40,6 +40,18 @@ from app.skills import skill_loader
 
 logger = logging.getLogger(__name__)
 
+# Module-level registry of active WebSocket sessions for broadcasting
+_sessions: set["Session"] = set()
+
+
+async def broadcast_event(data: dict) -> None:
+    """Send an event to all currently connected WebSocket sessions."""
+    for session in list(_sessions):
+        try:
+            await session.send(data)
+        except Exception:
+            pass
+
 
 # ── Session helpers ────────────────────────────────────────────────────────────
 
@@ -226,6 +238,7 @@ async def _handle_cancel_worker(session: Session, agent_id: str) -> None:
 async def ws_endpoint(ws: WebSocket, model: str = Query(default="claude")) -> None:
     session = Session(ws, model)
     await ws.accept()
+    _sessions.add(session)
 
     agents  = defs.all_agents()
     await session.send({
@@ -293,4 +306,5 @@ async def ws_endpoint(ws: WebSocket, model: str = Query(default="claude")) -> No
         except Exception:
             pass
     finally:
+        _sessions.discard(session)
         session.cancel_all()
