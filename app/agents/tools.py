@@ -201,12 +201,29 @@ def parse_tool_call(text: str) -> Tuple[Optional[str], Optional[dict]]:
     if m:
         return "web_navigate", {"url": m.group(1).strip()}
 
-    m = re.search(r'\[WEB_EXTRACT:\s*(.*?)\]', text, re.DOTALL)
+    m = re.search(r'\[WEB_CLICK:\s*([^\]]+)\]', text)
     if m:
-        parts    = m.group(1).strip().split(None, 1)
-        url      = parts[0] if parts else ""
-        selector = parts[1] if len(parts) > 1 else "body"
-        return "web_extract", {"url": url, "selector": selector}
+        return "web_click", {"selector": m.group(1).strip()}
+
+    m = re.search(r'\[WEB_TYPE:\s*([^:\]]+):\s*([^\]]+)\]', text)
+    if m:
+        return "web_type", {"selector": m.group(1).strip(), "text": m.group(2).strip()}
+
+    m = re.search(r'\[WEB_WAIT:\s*([^\]]+)\]', text)
+    if m:
+        return "web_wait", {"selector": m.group(1).strip()}
+
+    m = re.search(r'\[WEB_GET_TEXT\]', text)
+    if m:
+        return "web_get_text", {}
+
+    m = re.search(r'\[WEB_EXTRACT:\s*([^\]]*)\]', text)
+    if m:
+        raw = m.group(1).strip()
+        parts = raw.split(None, 1)
+        if parts and parts[0].startswith(("http://", "https://")):
+            return "web_extract", {"url": parts[0], "selector": parts[1] if len(parts) > 1 else "body"}
+        return "web_extract", {"url": "", "selector": raw or "body"}
 
     m = re.search(r'\[WEB_SCREENSHOT\]', text)
     if m:
