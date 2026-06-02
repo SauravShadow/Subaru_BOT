@@ -229,3 +229,5 @@ body.thinking .reactor-core { box-shadow: var(--glow-cyan), inset 0 0 30px hsla(
   margin-bottom: 8px; object-fit: contain;
   border: 1px solid var(--border);
 }
+
+@keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.3; } }

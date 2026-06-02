@@ -411,6 +411,13 @@ function sendMsgText(text) {
   if (S.attachments.length > 0)
     payload.attachments = S.attachments.map(a => ({ media_type: a.type, data: a.base64, name: a.name }));
   S.ws.send(JSON.stringify(payload));
+  // Fire filler audio immediately while LLM + Bark generate the real response
+  if (_ttsEnabled) {
+    fetch("/api/filler?context=" + encodeURIComponent(text))
+      .then(r => r.json())
+      .then(({ audio }) => { if (audio) AudioQueue.push(audio, "filler"); })
+      .catch(() => {});
+  }
   const imageAttachments = S.attachments.filter(a => a.type.startsWith("image/"));
   appendMsg(S.activeAgent, "user", text, imageAttachments);
   showChatMode();
@@ -503,6 +510,11 @@ function dispatch(obj) {
       addThinkingStep(`${S.agents[agentId]?.name || agentId} thinking…`);
       break;
 
+    case "audio": {
+      if (_ttsEnabled) AudioQueue.push(obj.data, obj.mode || "speak");
+      break;
+    }
+
     case "assistant": {
       const content = obj.message?.content || [];
       const texts = content.filter(b => b.type === "text" && b.text).map(b => b.text);
@@ -512,6 +524,10 @@ function dispatch(obj) {
       }));
       if (texts.length > 0 || images.length > 0) {
         appendMsg(agentId, "assistant", texts.join("\n"), images);
+      }
+      // bark_ok: false means Bark didn't deliver audio — fall back to browser TTS
+      if (_ttsEnabled && obj.bark_ok === false && texts.length > 0) {
+        speakResponse(texts.join("\n"), agentId);
       }
       break;
     }
@@ -535,9 +551,6 @@ function dispatch(obj) {
       setReactorState("idle");
       clearThinking();
       if (obj.summary) appendMsg(agentId, "assistant", `✓ ${obj.summary}`);
-      const agentLogs = S.chatLogs[agentId] || [];
-      const lastMsg   = [...agentLogs].reverse().find(m => m.role === "assistant");
-      if (lastMsg) speakResponse(lastMsg.content, agentId);
       break;
     }
 
@@ -783,6 +796,50 @@ function stopBrowserAutoRefresh() {
     _browserRefreshInterval = null;
   }
 }
+
+// ── Audio helpers ────────────────────────────────────────────────────────────
+
+function b64ToBlob(b64, mime = "audio/wav") {
+  const bytes = atob(b64);
+  const buf   = new Uint8Array(bytes.length);
+  for (let i = 0; i < bytes.length; i++) buf[i] = bytes.charCodeAt(i);
+  return new Blob([buf], { type: mime });
+}
+
+function showSingingIndicator(on) {
+  const el = document.getElementById("singing-indicator");
+  if (el) el.style.display = on ? "flex" : "none";
+}
+
+const AudioQueue = {
+  _queue:   [],
+  _playing: false,
+
+  push(base64, mode = "speak") {
+    if (!base64) return;
+    this._queue.push({ base64, mode });
+    if (!this._playing) this._next();
+  },
+
+  async _next() {
+    if (!this._queue.length) { this._playing = false; return; }
+    this._playing = true;
+    const { base64, mode } = this._queue.shift();
+    const blob = b64ToBlob(base64, "audio/wav");
+    const url  = URL.createObjectURL(blob);
+    const el   = new Audio(url);
+    if (mode === "sing") showSingingIndicator(true);
+    if (_voiceEnabled && _recognition) { try { _recognition.stop(); } catch(e) {} }
+    el.onended = () => {
+      URL.revokeObjectURL(url);
+      if (mode === "sing") showSingingIndicator(false);
+      if (_voiceEnabled && _recognition) { try { _recognition.start(); } catch(e) {} }
+      this._next();
+    };
+    el.onerror = () => { URL.revokeObjectURL(url); this._next(); };
+    el.play().catch(() => this._next());
+  }
+};
 
 // ── Voice Engine ────────────────────────────────────────────────────────────
 
