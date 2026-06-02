@@ -4,6 +4,7 @@ import imaplib
 import email as email_lib
 import json
 import smtplib
+import uuid
 from email.header import decode_header
 from email.mime.text import MIMEText
 
@@ -19,17 +20,18 @@ async def send_mail(subject: str, body: str, to: str = None) -> dict:
         return {"ok": False, "error": "No recipient email specified"}
 
     def _do():
-        msg            = MIMEText(body)
-        msg["Subject"] = subject
-        msg["From"]    = config.SMTP_USER
-        msg["To"]      = recipient
+        msg                = MIMEText(body, "plain", "utf-8")
+        msg["Subject"]     = subject
+        msg["From"]        = config.SMTP_USER
+        msg["To"]          = recipient
+        msg["Message-ID"]  = f"<{uuid.uuid4()}@shadowgarden>"
         with smtplib.SMTP(config.SMTP_HOST, config.SMTP_PORT_NUM) as s:
             s.starttls()
             s.login(config.SMTP_USER, config.SMTP_PASS)
             s.sendmail(config.SMTP_USER, recipient, msg.as_string())
 
     try:
-        loop = asyncio.get_event_loop()
+        loop = asyncio.get_running_loop()
         await loop.run_in_executor(None, _do)
         return {"ok": True}
     except Exception as exc:
@@ -96,7 +98,7 @@ async def read_emails(
         return result
 
     try:
-        loop = asyncio.get_event_loop()
+        loop = asyncio.get_running_loop()
         return await loop.run_in_executor(None, _do)
     except Exception as exc:
         return {"ok": False, "error": str(exc)}

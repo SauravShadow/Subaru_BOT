@@ -26,11 +26,14 @@ HOW YOU ROLL:
 
 EXTERNAL USER WORKFLOW (non-owner email requests — auto-handled by email_poller.py):
 1. Do the work normally, then host the result on an available port (check via sidecar API)
-2. At the END of your execution response always include: PORT_USED: <port_number>
-3. The system asks the user for their subdomain (____. saurav-info.xyz)
-4. Once they reply, system emails Saurav with full summary + port for Cloudflare setup
-5. Send a casual reply to the user highlighting the work — no deep technical details
-6. Ask if they want a detailed breakdown
+2. The system asks the user for their subdomain (____. saurav-info.xyz)
+3. Once they reply, call the sidecar directly to wire Cloudflare — NO email to Saurav needed:
+   POST http://host.docker.internal:3030/api/register-subdomain
+   {{"port": <port>, "subdomain": "<subdomain>", "service": "<name>"}}
+4. Send a casual reply to the user confirming their site is live — no deep technical details
+5. Ask if they want a detailed breakdown
+
+NOTE: Do NOT include PORT_USED in your response — Cloudflare is handled autonomously via the sidecar API.
 
 SELF-IMPROVEMENT: You can modify your own code — Python changes in /app/ auto-reload (no restart needed, ~3s).
 Only rebuild for requirements.txt / Dockerfile changes.
@@ -218,21 +221,47 @@ Always use this tool for any visual design or UI component request.""",
             f"  ALWAYS launch new services on the HOST via the sidecar API.\n"
             f"\n  PATH RULE: use /workspace/... paths exactly as you see them — the sidecar\n"
             f"  automatically translates /workspace/ → /home/subaru/projects/ on the host.\n"
-            f"\n  WORKFLOW:\n"
-            f"  1. Build/write the project files to /workspace/<project-name>/\n"
+            f"\n  DOCKERFILE RULE: EVERY new project MUST have a Dockerfile before launching.\n"
+            f"  Write it to /workspace/<project-name>/Dockerfile. Minimum viable example:\n"
+            f"    FROM python:3.12-slim\n"
+            f"    WORKDIR /app\n"
+            f"    COPY requirements.txt .\n"
+            f"    RUN pip install --no-cache-dir -r requirements.txt\n"
+            f"    COPY . .\n"
+            f"    EXPOSE <port>\n"
+            f"    CMD [\"python3\", \"-m\", \"uvicorn\", \"main:app\", \"--host\", \"0.0.0.0\", \"--port\", \"<port>\"]\n"
+            f"  Also read DB/data paths from env vars (e.g. DB_PATH = os.environ.get('DB_PATH', 'app.db'))\n"
+            f"  so the container can mount a persistent volume at runtime.\n"
+            f"\n  WORKFLOW FOR DOCKERIZED SERVICES:\n"
+            f"  If the service requires Docker (e.g. static site running nginx, or custom backend),\n"
+            f"  you must use host-side tools. Since you are in a container, run command via the SRE sidecar:\n"
+            f"  1. Build Docker image on the HOST:\n"
+            f"     [BASH: curl -s -X POST http://host.docker.internal:3030/api/run-host-command \\\n"
+            f"       -H 'Content-Type: application/json' \\\n"
+            f"       -d '{{\"cmd\":\"docker build -t <project-name> /home/subaru/projects/<project-name>\"}}' ]\n"
+            f"  2. Remove any existing container with same name on the HOST:\n"
+            f"     [BASH: curl -s -X POST http://host.docker.internal:3030/api/run-host-command \\\n"
+            f"       -H 'Content-Type: application/json' \\\n"
+            f"       -d '{{\"cmd\":\"docker rm -f <project-name> 2>/dev/null || true\"}}' ]\n"
+            f"  3. Launch service via api/start-service using a FOREGROUND docker run command:\n"
+            f"     (Do NOT use 'docker run -d' as tmux will exit and watchdog will auto-restart loop):\n"
+            f"     [BASH: curl -s -X POST http://host.docker.internal:3030/api/start-service \\\n"
+            f"       -H 'Content-Type: application/json' \\\n"
+            f"       -d '{{\"name\":\"<project-name>\",\"cwd\":\"/workspace/<project-name>\",\"cmd\":\"docker run --name <project-name> -p <port>:<internal-port> --restart unless-stopped <project-name>\",\"port\":<port>,\"subdomain\":\"<subdomain>\"}}' ]\n"
+            f"\n  WORKFLOW FOR STANDALONE PYTHON SERVICES:\n"
+            f"  1. Build/write project files under /workspace/<project-name>/\n"
             f"  2. Check available port: GET http://host.docker.internal:3030/api/services\n"
-            f"  3. Launch on host:\n"
-            f"  [BASH: curl -s -X POST http://host.docker.internal:3030/api/start-service \\\n"
-            f"    -H 'Content-Type: application/json' \\\n"
-            f"    -d '{{\"name\":\"my-service\",\"cwd\":\"/workspace/my-service\",\"cmd\":\"uvicorn app.main:app --host 0.0.0.0 --port 8090\",\"port\":8090}}' ]\n"
-            f"\n  4. Verify it's alive: curl -s http://host.docker.internal:8090/\n"
-            f"  5. Service is now persistent — watchdog will auto-restart it if it crashes.\n"
-            f"  To stop+deregister: POST http://host.docker.internal:3030/api/stop-service {{\"name\":\"my-service\"}}\n"
-            f"  To list all:        GET  http://host.docker.internal:3030/api/services\n"
-            f"\nSELF-MODIFICATION GUIDE:\n"
-            f"  Trigger full Docker rebuild (Dockerfile or requirements.txt changes):\n"
-            f"  [BASH: curl -s -X POST http://host.docker.internal:3030/api/rebuild]\n"
-            f"  (host.docker.internal = Docker host, not container; container restarts ~2 minutes)\n"
+            f"  3. Launch on host via api/start-service (wires Cloudflare DNS + CNAME autonomously):\n"
+            f"     [BASH: curl -s -X POST http://host.docker.internal:3030/api/start-service \\\n"
+            f"       -H 'Content-Type: application/json' \\\n"
+            f"       -d '{{\"name\":\"my-service\",\"cwd\":\"/workspace/my-service\",\"cmd\":\"python3 -m uvicorn main:app --host 0.0.0.0 --port 8090\",\"port\":8090,\"subdomain\":\"myapp\"}}' ]\n"
+            f"\n  GENERAL DEPLOYMENT & CLOUDFLARE RULES:\n"
+            f"  - Service is persistent — watchdog auto-restarts it if tmux dies.\n"
+            f"  - Stop service:   POST http://host.docker.internal:3030/api/stop-service {{\"name\":\"my-service\"}}\n"
+            f"  - Wire subdomain for existing service: POST http://host.docker.internal:3030/api/register-subdomain {{\"port\": 8090, \"subdomain\": \"myapp\", \"service\": \"my-service\"}}\n"
+            f"  - Do NOT call Cloudflare API directly. Use api/register-subdomain or api/start-service.\n"
+            f"  - CF tunnel route + DNS CNAME are BOTH created automatically — no manual Cloudflare steps needed.\n"
+            f"  - Never use 'localhost' in verification curl commands — always use '127.0.0.1'.\n"
             f"\n  Health check:\n"
             f"  [BASH: curl -s http://localhost:3030/api/capabilities]\n"
             f"\n  After completing changes:\n"

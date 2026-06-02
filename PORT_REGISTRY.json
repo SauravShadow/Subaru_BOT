@@ -49,6 +49,21 @@
       "subdomain": "stream",
       "service": "stream-app",
       "note": "stream.saurav-info.xyz"
+    },
+    "8300": {
+      "subdomain": "tree",
+      "service": "family-tree-app",
+      "note": "External user sauravkr031 - family tree D3.js app"
+    },
+    "8085": {
+      "subdomain": "quotes",
+      "service": "got-quotes",
+      "note": ""
+    },
+    "8400": {
+      "subdomain": "ping",
+      "service": "ping-site",
+      "note": ""
     }
   },
   "subdomains": {
@@ -60,7 +75,10 @@
     "habit": 8090,
     "go": 8100,
     "finance": 8200,
-    "stream": 9000
+    "stream": 9000,
+    "tree": 8300,
+    "quotes": 8085,
+    "ping": 8400
   },
   "reserved_ports": [
     80,
@@ -70,5 +88,5 @@
     22,
     8080
   ],
-  "next_suggested_port": 8300
+  "next_suggested_port": 8500
 }

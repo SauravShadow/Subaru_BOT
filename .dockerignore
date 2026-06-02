@@ -2,5 +2,11 @@
 config.json
 *.pyc
 __pycache__
+.pytest_cache
+.mypy_cache
 .venv
+venv
 .git
+*.log
+tests/
+docs/

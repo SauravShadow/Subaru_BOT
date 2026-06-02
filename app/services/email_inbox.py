@@ -91,7 +91,7 @@ async def fetch_new_emails(max_emails: int = 10) -> list:
             logging.getLogger(__name__).error("fetch_new_emails error: %s", exc)
         return results
 
-    loop = asyncio.get_event_loop()
+    loop = asyncio.get_running_loop()
     return await loop.run_in_executor(None, _do)
 
 
@@ -120,7 +120,7 @@ async def send_email(to: str, subject: str, body: str) -> dict:
         return {"ok": True, "message_id": our_message_id}
 
     try:
-        loop = asyncio.get_event_loop()
+        loop = asyncio.get_running_loop()
         return await loop.run_in_executor(None, _do)
     except Exception as exc:
         return {"ok": False, "error": str(exc), "message_id": our_message_id}
@@ -161,7 +161,7 @@ async def send_reply(
         return {"ok": True, "message_id": our_message_id}
 
     try:
-        loop = asyncio.get_event_loop()
+        loop = asyncio.get_running_loop()
         return await loop.run_in_executor(None, _do)
     except Exception as exc:
         return {"ok": False, "error": str(exc), "message_id": our_message_id}

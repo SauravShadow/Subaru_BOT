@@ -179,6 +179,9 @@ AVAILABLE TOOLS:
 14. [RUN_TESTS]                                  — Run pytest and return pass/fail summary
 15. [GENERATE_IMAGE: description of the image]   — Generate an image from a text prompt
     Example: [GENERATE_IMAGE: A futuristic city skyline at sunset, cyberpunk style]
+16. [EMAIL_USER:recipient@domain.com | Subject] body  — Send an email to a specific address
+    Example: [EMAIL_USER:john@example.com | Meeting Tomorrow] Hi John, let's meet at 3pm.
+    Or:      [EMAIL_USER:Task Done] Your task has been completed.   (sends to the main user)
 
 Always state your approach in 2 sentences before calling your first tool.
 """
@@ -499,9 +502,14 @@ def _build_gemini_prompt(agent_id: str, user_msg: str) -> str:
         f"{clean_persona}\n\n"
         f"IMPORTANT: You are responding via Gemini API (limited tool access). "
         f"Answer conversationally and helpfully. Do NOT output [BASH:], [READ:], [WRITE:], "
-        f"[DELEGATE:], or any other tool tags.\n"
-        f"EXCEPTION: You CAN use [GENERATE_IMAGE: description] to generate images. "
-        f"Example: [GENERATE_IMAGE: A futuristic city skyline at sunset, cyberpunk neon lights]\n"
+        f"[DELEGATE:], or any other execution tool tags.\n"
+        f"EXCEPTIONS — you CAN use these tags:\n"
+        f"  [GENERATE_IMAGE: description]  — generate an image\n"
+        f"    Example: [GENERATE_IMAGE: A futuristic city skyline at sunset, cyberpunk neon lights]\n"
+        f"  [EMAIL_USER:recipient@domain.com | Subject] body  — send an email to anyone\n"
+        f"    Example: [EMAIL_USER:john@example.com | Hello from Shadow Garden] Hi John, just checking in!\n"
+        f"  [EMAIL_USER:Subject] body  — send an email to the main user (no recipient = owner)\n"
+        f"    Example: [EMAIL_USER:Task Complete] Your task has been finished.\n"
         f"{live_ctx}\n"
         f"Conversation History:\n{hist_str}\n\n"
         f"User: {user_msg}"
@@ -522,7 +530,7 @@ async def run_gemini_agent(
         full_prompt = _build_gemini_prompt(agent_id, prompt)
         response = await asyncio.to_thread(
             client.models.generate_content,
-            model="gemini-3.5-flash",
+            model="gemini-3-flash-preview",
             contents=full_prompt,
         )
         text = (response.text or "").strip()
@@ -657,7 +665,7 @@ async def run_claude_vision(
 
             response = await asyncio.to_thread(
                 client.models.generate_content,
-                model="gemini-3.5-flash",
+                model="gemini-3-flash-preview",
                 contents=[genai_types.Content(role="user", parts=parts)],
                 config=genai_types.GenerateContentConfig(
                     system_instruction=clean_persona[:2000],

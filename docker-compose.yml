@@ -19,6 +19,8 @@ services:
       - /home/subaru/projects/virtual-company:/app
       # All projects: workers can read/write any project
       - /home/subaru/projects:/workspace
+      # HC volume mount so symlinks inside /workspace resolve correctly
+      - /mnt/HC_Volume_105874680:/mnt/HC_Volume_105874680
     environment:
       - HOME=/home/nexus
       - WORK_DIR=/workspace

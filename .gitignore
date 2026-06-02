@@ -5,3 +5,4 @@ __pycache__/
 .venv/
 market_data/
 app/static/previews/
+sidecar.log

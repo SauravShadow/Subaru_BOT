@@ -1,15 +1,25 @@
-FROM python:3.12-slim
+FROM python:3.12-slim AS builder
 
 WORKDIR /app
 
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    gcc \
+    && rm -rf /var/lib/apt/lists/*
+
 COPY requirements.txt .
-RUN pip install --no-cache-dir -r requirements.txt
+RUN pip install --no-cache-dir --prefix=/install -r requirements.txt
+RUN pip install --no-cache-dir --prefix=/install playwright
 
-# Install Playwright Chromium + system deps to a world-readable shared path
+FROM python:3.12-slim AS runtime
+
+WORKDIR /app
+
 ENV PLAYWRIGHT_BROWSERS_PATH=/ms-playwright
-RUN pip install playwright && playwright install chromium --with-deps && chmod -R o+rx /ms-playwright
 
-# Create non-root user matching host uid=1000 (subaru) so volume mounts work
+COPY --from=builder /install /usr/local
+
+RUN playwright install chromium --with-deps && chmod -R o+rx /ms-playwright
+
 RUN groupadd -g 1000 nexus && useradd -m -u 1000 -g nexus nexus
 
 COPY entrypoint.sh ./

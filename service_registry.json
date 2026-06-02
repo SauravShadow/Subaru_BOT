@@ -8,5 +8,11 @@
     "cwd": "/home/subaru/projects/wealthwise",
     "cmd": "python3 server.py",
     "port": 8200
+  },
+  "family-tree": {
+    "cwd": "/home/subaru/projects/family-tree",
+    "cmd": "python3 -m uvicorn main:app --host 0.0.0.0 --port 8300",
+    "port": 8300,
+    "subdomain": "tree"
   }
 }

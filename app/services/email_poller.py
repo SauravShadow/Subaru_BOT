@@ -230,13 +230,25 @@ async def _run_execution(task: dict, approval_text: str):
             f"Agreed plan:\n{task['plan']}\n\n"
             f"User confirmation / clarification:\n{approval_text}\n\n"
             "Execute this now using your tools and build the project completely.\n\n"
-            "IMPORTANT: After building, host the project on an available port.\n"
-            "First check which ports are already in use:\n"
-            "  curl -s http://host.docker.internal:3030/api/services\n"
-            "Then pick an unused port from range 3031-3099 or 8100-8199 and start the service on the HOST:\n"
-            "  curl -s -X POST http://host.docker.internal:3030/api/start-service \\\n"
-            "    -H 'Content-Type: application/json' \\\n"
-            "    -d '{\"name\":\"<service-name>\",\"cwd\":\"/workspace/<dir>\",\"cmd\":\"<start-command>\"}'\n\n"
+            "MANDATORY STEPS — in this order:\n\n"
+            "1. BUILD: Write all project files to /workspace/<project-name>/\n\n"
+            "2. DOCKERFILE: Every project MUST have a Dockerfile. Write it before launching.\n"
+            "   Minimum:\n"
+            "     FROM python:3.12-slim\n"
+            "     WORKDIR /app\n"
+            "     COPY requirements.txt .\n"
+            "     RUN pip install --no-cache-dir -r requirements.txt\n"
+            "     COPY . .\n"
+            "     EXPOSE <port>\n"
+            "     CMD [\"python3\", \"-m\", \"uvicorn\", \"main:app\", \"--host\", \"0.0.0.0\", \"--port\", \"<port>\"]\n"
+            "   Also use env vars for any file paths (e.g. DB_PATH = os.environ.get('DB_PATH', 'app.db'))\n\n"
+            "3. CHECK PORTS: curl -s http://host.docker.internal:3030/api/services\n"
+            "   Pick an unused port from 8100-8999.\n\n"
+            "4. LAUNCH on the HOST via sidecar (NOT inside this container):\n"
+            "   curl -s -X POST http://host.docker.internal:3030/api/start-service \\\n"
+            "     -H 'Content-Type: application/json' \\\n"
+            "     -d '{\"name\":\"<name>\",\"cwd\":\"/workspace/<dir>\",\"cmd\":\"python3 -m uvicorn main:app --host 0.0.0.0 --port <port>\",\"port\":<port>}'\n\n"
+            "5. VERIFY: curl -s http://127.0.0.1:<port>/  (use 127.0.0.1, not localhost)\n\n"
             "At the very END of your response, include exactly this line:\n"
             "PORT_USED: <port_number>\n\n"
             "Write a brief technical summary of what was built and the port used."
@@ -308,7 +320,7 @@ async def _run_execution(task: dict, approval_text: str):
 
 
 async def _handle_subdomain_reply(email: dict, task: dict, reply_body: str):
-    """External user replied with subdomain — email Saurav, send casual report."""
+    """External user replied with subdomain — wire Cloudflare directly, send casual report."""
     # Extract first word and sanitise to URL-safe subdomain
     raw = reply_body.strip().split()[0].lower() if reply_body.strip() else "site"
     subdomain = re.sub(r"[^a-z0-9-]", "", raw)[:30] or "site"
@@ -316,7 +328,8 @@ async def _handle_subdomain_reply(email: dict, task: dict, reply_body: str):
     # Check subdomain collision against the port registry via sidecar
     try:
         import httpx as _httpx
-        r = await _httpx.AsyncClient().get(
+        _cf_client = _httpx.AsyncClient()
+        r = await _cf_client.get(
             f"http://host.docker.internal:3030/api/check-subdomain/{subdomain}", timeout=3.0
         )
         result_data = r.json()
@@ -334,29 +347,32 @@ async def _handle_subdomain_reply(email: dict, task: dict, reply_body: str):
 
     port = task.get("port_used", "unknown")
 
-    # Notify the owner (Saurav) with full details
-    owner_subject = f"[External Task] {task['subject']} — needs Cloudflare"
-    owner_body = (
-        f"Hey! External user {task['from_name']} ({task['from_email']}) just had something built.\n\n"
-        f"Here's what was created:\n\n"
-        f"─────────────────────────\n\n"
-        f"{task['execution_result']}\n\n"
-        f"─────────────────────────\n\n"
-        f"Running on port: {port}\n"
-        f"They want the subdomain: {subdomain}.saurav-info.xyz\n\n"
-        f"Please add a Cloudflare tunnel / DNS record:\n"
-        f"  {subdomain}.saurav-info.xyz → localhost:{port}\n\n"
-        f"— Shadow Garden System"
-    )
-    await inbox.send_email(to=OWNER_EMAIL, subject=owner_subject, body=owner_body)
-    logger.info("Owner notified about deployment: %s.saurav-info.xyz → port %s", subdomain, port)
+    # Wire Cloudflare tunnel directly via sidecar API — no need to email Saurav
+    cf_ok = False
+    cf_msg = "Cloudflare: not configured"
+    if port != "unknown":
+        try:
+            import httpx as _httpx
+            _cf_client2 = _httpx.AsyncClient()
+            cf_resp = await _cf_client2.post(
+                "http://host.docker.internal:3030/api/register-subdomain",
+                json={"port": int(port), "subdomain": subdomain, "service": task["subject"][:40]},
+                timeout=15.0,
+            )
+            cf_data = cf_resp.json()
+            cf_ok  = cf_data.get("ok", False)
+            cf_msg = cf_data.get("message", str(cf_data))
+        except Exception as exc:
+            cf_msg = f"Cloudflare wiring failed: {exc}"
+    logger.info("[cloudflare] %s", cf_msg)
 
-    # Send casual reply to the external user
+    # Send casual reply to the external user — site is already live
+    url = f"{subdomain}.saurav-info.xyz"
     first_name = task["from_name"].split()[0] if task["from_name"] else ""
+    status_note = f"it's live at **{url}**" if cf_ok else f"it's running — {url} should be up shortly"
     casual_body = (
         f"Hey{' ' + first_name if first_name else ''}! All done 🚀\n\n"
-        f"Your site is built and live — Subaru's setting up {subdomain}.saurav-info.xyz for you, "
-        f"should be accessible real soon!\n\n"
+        f"Your site is built and {status_note}!\n\n"
         f"We got everything sorted — it's looking great!\n\n"
         f"Want me to walk you through how it all works under the hood? Just say the word!\n\n"
         f"— Subaru Natsuki, CEO · Shadow Garden"

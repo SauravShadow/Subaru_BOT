@@ -38,6 +38,8 @@ CF_ACCOUNT_ID = os.environ.get("CF_ACCOUNT_ID", "")
 CF_API_TOKEN  = os.environ.get("CF_API_TOKEN", "")
 CF_TUNNEL_ID  = os.environ.get("CF_TUNNEL_ID", "edb750a6-b08d-4e67-99c1-477f744bc98e")
 CF_DOMAIN     = os.environ.get("CF_DOMAIN", "saurav-info.xyz")
+CF_ZONE_ID        = os.environ.get("CF_ZONE_ID", "")         # Required for auto-DNS; get from CF dashboard → Zone Overview
+CF_DNS_API_TOKEN  = os.environ.get("CF_DNS_API_TOKEN", "")   # Token with Zone:DNS:Edit — separate from tunnel token
 
 # Shared connection pooling client
 client = httpx.AsyncClient()
@@ -133,10 +135,14 @@ async def _cf_add_tunnel_route(subdomain: str, port: int) -> tuple[bool, str]:
 
     ingress = data.get("result", {}).get("config", {}).get("ingress", [])
 
-    # Idempotent: skip if already present
+    # Idempotent: skip tunnel update if already present, but still ensure DNS exists
     for rule in ingress:
         if rule.get("hostname") == hostname:
-            return True, f"{hostname} already in tunnel config"
+            dns_msg = ""
+            if CF_ZONE_ID:
+                dns_ok, dns_msg = await _cf_create_dns_record(hostname)
+                dns_msg = f" | DNS: {dns_msg}"
+            return True, f"{hostname} already in tunnel config{dns_msg}"
 
     # Split named rules from the required catch-all (no hostname)
     named    = [r for r in ingress if r.get("hostname")]
@@ -144,14 +150,85 @@ async def _cf_add_tunnel_route(subdomain: str, port: int) -> tuple[bool, str]:
     if not catchall:
         catchall = [{"service": "http_status:404"}]
 
-    updated_ingress = named + [{"hostname": hostname, "service": f"http://localhost:{port}"}] + catchall
+    updated_ingress = named + [{"hostname": hostname, "service": f"http://127.0.0.1:{port}"}] + catchall
 
     try:
         put_resp = await client.put(cfg_url, headers=headers, json={"config": {"ingress": updated_ingress}}, timeout=15)
         put_resp.raise_for_status()
-        return True, f"Cloudflare: added {hostname} → localhost:{port}"
     except Exception as e:
         return False, f"Failed to update tunnel config: {e}"
+
+    # Also create DNS CNAME record if we have zone credentials
+    dns_msg = ""
+    if CF_ZONE_ID:
+        dns_ok, dns_msg = await _cf_create_dns_record(hostname)
+        dns_msg = f" | DNS: {dns_msg}"
+    else:
+        dns_msg = " | DNS RECORD NOT CREATED — CF_ZONE_ID missing from .env. Add it + Zone:DNS:Edit to CF_API_TOKEN, then the subdomain will be publicly reachable."
+        logger.warning("[cloudflare] %s → tunnel config added but NO DNS record: CF_ZONE_ID not set", hostname)
+
+    return True, f"Cloudflare: added {hostname} → localhost:{port}{dns_msg}"
+
+
+async def _cf_create_dns_record(hostname: str) -> tuple[bool, str]:
+    """Create (or verify) a proxied CNAME DNS record pointing to the Cloudflare Tunnel."""
+    if not CF_ZONE_ID:
+        return False, "CF_ZONE_ID not set"
+    # Prefer the dedicated DNS token; fall back to the main tunnel token
+    dns_token = CF_DNS_API_TOKEN or CF_API_TOKEN
+    if not dns_token:
+        return False, "No CF API token set"
+
+    headers = {"Authorization": f"Bearer {dns_token}", "Content-Type": "application/json"}
+    dns_url = f"https://api.cloudflare.com/client/v4/zones/{CF_ZONE_ID}/dns_records"
+
+    # Attempt to create CNAME directly — skip the GET existence check because the token
+    # may have DNS:Write but not DNS:Read (scoped tokens). Treat "already exists" as success.
+    record = {
+        "type": "CNAME",
+        "name": hostname,
+        "content": f"{CF_TUNNEL_ID}.cfargotunnel.com",
+        "proxied": True,
+        "ttl": 1,
+    }
+    try:
+        create_resp = await client.post(dns_url, headers=headers, json=record, timeout=15)
+        data = create_resp.json()
+        # Error code 81053 = record already exists — treat as success
+        errors = data.get("errors", [])
+        if any(e.get("code") == 81053 for e in errors):
+            return True, f"CNAME for {hostname} already exists"
+        create_resp.raise_for_status()
+        return True, f"CNAME created: {hostname} → {CF_TUNNEL_ID}.cfargotunnel.com"
+    except Exception as e:
+        return False, f"DNS create failed: {e}"
+
+
+async def _cf_delete_dns_record(hostname: str) -> tuple[bool, str]:
+    """Delete the DNS CNAME record for a hostname."""
+    if not CF_ZONE_ID or not CF_API_TOKEN:
+        return False, "CF_ZONE_ID not set — skipping DNS delete"
+
+    headers = {"Authorization": f"Bearer {CF_API_TOKEN}", "Content-Type": "application/json"}
+    dns_url = f"https://api.cloudflare.com/client/v4/zones/{CF_ZONE_ID}/dns_records"
+
+    try:
+        list_resp = await client.get(dns_url, headers=headers, params={"name": hostname}, timeout=15)
+        list_resp.raise_for_status()
+        records = list_resp.json().get("result", [])
+    except Exception as e:
+        return False, f"DNS list failed: {e}"
+
+    if not records:
+        return True, f"No DNS record found for {hostname}"
+
+    record_id = records[0]["id"]
+    try:
+        del_resp = await client.delete(f"{dns_url}/{record_id}", headers=headers, timeout=15)
+        del_resp.raise_for_status()
+        return True, f"DNS record deleted: {hostname}"
+    except Exception as e:
+        return False, f"DNS delete failed: {e}"
 
 
 async def _cf_remove_tunnel_route(subdomain: str) -> tuple[bool, str]:
@@ -180,9 +257,15 @@ async def _cf_remove_tunnel_route(subdomain: str) -> tuple[bool, str]:
     try:
         put_resp = await client.put(cfg_url, headers=headers, json={"config": {"ingress": updated}}, timeout=15)
         put_resp.raise_for_status()
-        return True, f"Cloudflare: removed {hostname} from tunnel"
     except Exception as e:
         return False, f"Failed to update tunnel config: {e}"
+
+    dns_msg = ""
+    if CF_ZONE_ID:
+        _, dns_msg = await _cf_delete_dns_record(hostname)
+        dns_msg = f" | DNS: {dns_msg}"
+
+    return True, f"Cloudflare: removed {hostname} from tunnel{dns_msg}"
 
 
 def _nginx_add_vhost(subdomain: str, port: int) -> tuple[bool, str]:
@@ -924,6 +1007,13 @@ async def transparent_http_proxy(request: Request, path: str):
         return await api_trigger_rebuild()
     if path == "api/status":
         return await api_get_status()
+    if path == "api/run-host-command":
+        body = await request.json()
+        cmd = body.get("cmd")
+        if not cmd:
+            return {"ok": False, "error": "cmd is required"}
+        output = await _host_bash(cmd)
+        return {"ok": True, "output": output}
     if path == "api/start-service":
         body = await request.json()
         return await api_start_service(body)

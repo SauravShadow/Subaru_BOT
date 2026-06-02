@@ -1,9 +1,0 @@
-nohup: ignoring input
-INFO:     Started server process [1185619]
-INFO:     Waiting for application startup.
-INFO:     Application startup complete.
-INFO:     Uvicorn running on http://0.0.0.0:3040 (Press CTRL+C to quit)
-
-  Shadow Garden Operations Command  |  http://0.0.0.0:3040
-
-INFO:     127.0.0.1:41098 - "POST /api/rebuild HTTP/1.1" 200 OK
