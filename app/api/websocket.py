@@ -182,15 +182,7 @@ async def _handle_message(session: Session, agent_id: str, text: str) -> None:
             bg.add_done_callback(session.bg_tasks.discard)
             session.worker_tasks[role] = bg
 
-        # Send any emails
-        for target, subj, body in deleg_svc.parse_emails(full_resp):
-            result = await email_svc.send_mail(f"[Shadow Garden] {subj}", body, to=target)
-            await session.send({
-                "type": "email_sent", "subject": subj,
-                "ok": result["ok"], "error": result.get("error", ""),
-            })
-
-    state.record(agent_id, "assistant", deleg_svc.clean_response(full_resp))
+    state.record(agent_id, "assistant", deleg_svc.clean_delegations(full_resp))
     await session.send({"type": "done", "agent": agent_id})
 
 

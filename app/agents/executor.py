@@ -346,24 +346,8 @@ async def run_tgpt_agent(
     except Exception:
         pass
 
-    # Send the final response at the end of the tgpt execution
     if full_resp.strip():
-        import re as _re
-        clean_resp = full_resp.strip()
-        clean_resp = _re.sub(r'\[GENERATE_IMAGE:\s*.*?\]', '', clean_resp, flags=_re.DOTALL).strip()
-        clean_resp = _re.sub(r'\[DONE:\s*.*?\]', '', clean_resp, flags=_re.DOTALL).strip()
-        clean_resp = _re.sub(r'\[Tool Output\]:.*', '', clean_resp, flags=_re.DOTALL).strip()
-        
-        # Fall back to last turn_text if clean_resp is completely empty
-        if not clean_resp and 'turn_text' in locals() and turn_text.strip():
-            clean_resp = _re.sub(r'\[(DONE|GENERATE_IMAGE):\s*.*?\]', '', turn_text, flags=_re.DOTALL).strip()
-            
-        if clean_resp:
-            await send({
-                "type":    "assistant",
-                "agent":   agent_id,
-                "message": {"content": [{"type": "text", "text": clean_resp}]},
-            })
+        await pipeline.process(full_resp, agent_id, send)
 
     return full_resp
 
@@ -440,19 +424,6 @@ async def run_claude_agent(
                 await send({"type": "backend_status", "agent": agent_id,
                             **backend_state.status_dict()})
 
-        # Send the final compiled, clean response at the end of successful execution
-        if full_resp.strip():
-            import re as _re
-            clean_resp = full_resp.strip()
-            clean_resp = _re.sub(r'\[GENERATE_IMAGE:\s*.*?\]', '', clean_resp, flags=_re.DOTALL).strip()
-            clean_resp = _re.sub(r'\[DONE:\s*.*?\]', '', clean_resp, flags=_re.DOTALL).strip()
-            
-            await send({
-                "type":    "assistant",
-                "agent":   agent_id,
-                "message": {"content": [{"type": "text", "text": clean_resp}]},
-            })
-
     try:
         mem_svc.save_memory(agent_id, prompt, mem_type="user_query", importance=0.4)
         if full_resp.strip():
@@ -460,25 +431,8 @@ async def run_claude_agent(
     except Exception:
         pass
 
-    # Check if Claude wants to generate an image
-    import re as _re
-    img_match = _re.search(r'\[GENERATE_IMAGE:\s*(.*?)\]', full_resp, _re.DOTALL)
-    if img_match:
-        img_prompt = img_match.group(1).strip()
-        await send({"type": "tool_call", "agent": agent_id,
-                    "tool": "generate_image", "label": "Generating Image",
-                    "path": img_prompt[:60]})
-        img_result = await generate_image(img_prompt)
-        if img_result.get("ok"):
-            await send({
-                "type":    "assistant",
-                "agent":   agent_id,
-                "message": {"content": [{
-                    "type":       "image",
-                    "media_type": img_result["mime_type"],
-                    "data":       img_result["data"],
-                }]},
-            })
+    if full_resp.strip():
+        await pipeline.process(full_resp, agent_id, send)
 
     return full_resp
 
@@ -537,44 +491,13 @@ async def run_gemini_agent(
         text = (response.text or "").strip()
         if not text:
             raise ValueError("Empty Gemini response")
-        import re as _re
-        display_text = _re.sub(r'\[GENERATE_IMAGE:\s*.*?\]', '', text, flags=_re.DOTALL).strip()
-        await send({
-            "type":    "assistant",
-            "agent":   agent_id,
-            "message": {"content": [{"type": "text", "text": display_text}]},
-        })
-
-        # Check if Gemini wants to generate an image
-        import re as _re
-        img_match = _re.search(r'\[GENERATE_IMAGE:\s*(.*?)\]', text, _re.DOTALL)
-        if img_match:
-            img_prompt = img_match.group(1).strip()
-            logger.info("🎨 GENERATE_IMAGE detected: %s", img_prompt[:80])
-            await send({"type": "tool_call", "agent": agent_id,
-                        "tool": "generate_image", "label": "Generating Image",
-                        "path": img_prompt[:60]})
-            img_result = await generate_image(img_prompt)
-            logger.info("🎨 Image result: ok=%s, size=%s", img_result.get("ok"), img_result.get("size", img_result.get("error")))
-            if img_result.get("ok"):
-                await send({
-                    "type":    "assistant",
-                    "agent":   agent_id,
-                    "message": {"content": [{
-                        "type":       "image",
-                        "media_type": img_result["mime_type"],
-                        "data":       img_result["data"],
-                    }]},
-                })
-                logger.info("🎨 Image sent to frontend!")
-        else:
-            logger.info("No GENERATE_IMAGE tag found in response (len=%d)", len(text))
-
         try:
             mem_svc.save_memory(agent_id, prompt, mem_type="user_query", importance=0.4)
             mem_svc.save_memory(agent_id, text[:500], mem_type="agent_response", importance=0.3)
         except Exception:
             pass
+
+        await pipeline.process(text, agent_id, send)
         return text
     except Exception as exc:
         logger.warning("Gemini API error (%s) — falling back to tgpt", exc)

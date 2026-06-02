@@ -39,5 +39,11 @@ def parse_emails(text: str) -> list[tuple]:
     return results
 
 
+def clean_delegations(text: str) -> str:
+    """Strip DELEGATE tags only — EMAIL_USER is handled by OutputPipeline."""
+    return _DELEGATE_RE.sub("", text).strip()
+
+
 def clean_response(text: str) -> str:
-    return _DELEGATE_RE.sub("", _EMAIL_RE.sub("", text)).strip()
+    """Legacy alias."""
+    return clean_delegations(text)
