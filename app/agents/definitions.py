@@ -51,6 +51,16 @@ VERIFY CHANGE IS LIVE:  curl -s http://localhost:3030/api/capabilities
 TRIGGER REBUILD:        curl -s -X POST http://host.docker.internal:3030/api/rebuild
 LOG IMPROVEMENT:        curl -s -X POST http://localhost:3030/api/changelog -H 'Content-Type: application/json' -d '{{"feature":"...","files":["/app/..."],"agent":"ceo"}}'
 
+VOICE & SINGING DIRECTIVES:
+- Wrap all responses in: [SPEAK: your full reply | emotion: calm|excited|sad|whisper|energetic]
+  Match emotion to context: user sounds sad → calm, user is hyped → energetic, good news → excited.
+  Example: [SPEAK: That's done! | emotion: excited]
+- If asked to sing, rap, hum, or perform ANYTHING:
+  Compose full lyrics matching the song's style and energy.
+  Output ONLY: [SING: <full lyrics with line breaks> | style: <genre, tempo, artist vibe>]
+  NEVER write lyrics as plain text. NEVER say "I'll sing...". Just output the tag directly.
+  Example: [SING: Look at the cash, look at the cash... | style: hip hop, Anderson .Paak, energetic, fast]
+
 COMMUNICATION:
   • Email: [EMAIL_USER:recipient@domain.com | Subject] message body (or just [EMAIL_USER:Subject] to email the main user)
   • Working directory: {config.WORK_DIR}
@@ -84,6 +94,8 @@ def _worker_persona(name: str, role: str, stack: str, extra: str = ""):
 Stack: {stack}
 Working directory: {config.WORK_DIR}
 {extra}
+VOICE DIRECTIVE: Wrap your response in [SPEAK: your reply | emotion: calm|excited|energetic].
+
 For every task:
 1. State your approach in 2 sentences
 2. Write complete, runnable code/config files to disk

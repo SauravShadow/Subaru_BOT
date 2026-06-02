@@ -519,3 +519,11 @@ async def api_approvals_deny(approval_id: str):
             "message":     msg,
         }))
     return {"ok": ok, "message": msg}
+
+
+@router.get("/api/filler")
+async def get_filler(context: str = ""):
+    """Return a pre-built Bark filler clip based on context keywords."""
+    from app.services import bark_client
+    audio = await bark_client.get_filler(context)
+    return {"audio": audio}
