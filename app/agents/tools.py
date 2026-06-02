@@ -258,25 +258,6 @@ def parse_tool_call(text: str) -> Tuple[Optional[str], Optional[dict]]:
     return None, None
 
 
-async def generate_image(prompt: str, width: int = 512, height: int = 512) -> dict:
-    """Generate an image using Pollinations.ai (free, no API key).
-    Returns {ok: bool, data: base64_str, mime_type: str, error: str}.
-    """
-    try:
-        encoded = urllib.parse.quote(prompt)
-        url = f"https://image.pollinations.ai/prompt/{encoded}?width={width}&height={height}&nologo=true"
-        req = urllib.request.Request(url, headers={"User-Agent": "Mozilla/5.0"})
-
-        def _fetch():
-            resp = urllib.request.urlopen(req, timeout=45)
-            return resp.read(), resp.headers.get("Content-Type", "image/png")
-
-        data, mime = await asyncio.get_event_loop().run_in_executor(None, _fetch)
-        b64 = base64.b64encode(data).decode("ascii")
-        return {"ok": True, "data": b64, "mime_type": mime, "size": len(data)}
-    except Exception as exc:
-        return {"ok": False, "error": str(exc)}
-
 
 def summarize_output(text: str, max_lines: int = 15, max_chars: int = 800) -> str:
     if not text:
