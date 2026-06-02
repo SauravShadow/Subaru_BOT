@@ -27,7 +27,27 @@ services:
       - USER_EMAIL=sauravsubaru@gmail.com
       - MAX_STORAGE_GB=10
       - GEMINI_API_KEY=${GEMINI_API_KEY:-}
+      - BARK_SVC_URL=http://bark-svc:9001
       # Optional: configure SMTP for CEO-to-user email
       # - SMTP_USER=your@gmail.com
       # - SMTP_PASS=your_app_password
+    depends_on:
+      bark-svc:
+        condition: service_healthy
     restart: unless-stopped
+
+  bark-svc:
+    build: ./bark-svc
+    container_name: bark-svc
+    volumes:
+      - bark-models:/root/.cache/suno/bark_v0
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:9001/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 30
+      start_period: 120s
+
+volumes:
+  bark-models:
