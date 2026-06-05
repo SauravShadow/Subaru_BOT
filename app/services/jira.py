@@ -69,7 +69,7 @@ def search_tickets(jql: str) -> str:
             return "No tickets found."
         lines = []
         for issue in issues:
-            f        = issue["fields"]
+            f = issue["fields"]
             assignee = (f.get("assignee") or {}).get("displayName", "Unassigned")
             lines.append(
                 f"{issue['key']}: {f.get('summary', '')} "
