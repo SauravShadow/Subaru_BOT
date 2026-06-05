@@ -363,6 +363,7 @@ async def run_claude_agent(
         config.CLAUDE_BIN, "-p", _build_claude_prompt(agent_id, prompt),
         "--output-format", "stream-json",
         "--verbose",
+        "--model", config.DEFAULT_MODEL,
         "--allowedTools", config.ALLOWED_TOOLS,
     ]
     proc = await asyncio.create_subprocess_exec(
@@ -457,8 +458,12 @@ def _build_gemini_prompt(agent_id: str, user_msg: str) -> str:
         f"{clean_persona}\n\n"
         f"IMPORTANT: You are responding via Gemini API (limited tool access). "
         f"Answer conversationally and helpfully. Do NOT output [BASH:], [READ:], [WRITE:], "
-        f"[DELEGATE:], or any other execution tool tags.\n"
-        f"EXCEPTIONS — you CAN use these tags:\n"
+        f"[DELEGATE:], or similar execution tool tags.\n"
+        f"MANDATORY — you MUST use these tags in EVERY response:\n"
+        f"  [SPEAK: your full reply | emotion: calm|excited|sad|whisper|energetic]  — REQUIRED for ALL responses\n"
+        f"    Match emotion to context. Example: [SPEAK: That's done! | emotion: excited]\n"
+        f"    If asked to sing: [SING: full lyrics | style: genre]\n"
+        f"OPTIONAL — you CAN also use these tags:\n"
         f"  [GENERATE_IMAGE: description]  — generate an image\n"
         f"    Example: [GENERATE_IMAGE: A futuristic city skyline at sunset, cyberpunk neon lights]\n"
         f"  [EMAIL_USER:recipient@domain.com | Subject] body  — send an email to anyone\n"
@@ -485,7 +490,7 @@ async def run_gemini_agent(
         full_prompt = _build_gemini_prompt(agent_id, prompt)
         response = await asyncio.to_thread(
             client.models.generate_content,
-            model="gemini-3-flash-preview",
+            model="gemini-3.5-flash",
             contents=full_prompt,
         )
         text = (response.text or "").strip()
@@ -500,11 +505,13 @@ async def run_gemini_agent(
         await pipeline.process(text, agent_id, send)
         return text
     except Exception as exc:
-        logger.warning("Gemini API error (%s) — falling back to tgpt", exc)
+        logger.warning("Gemini API error (%s) — falling back to Claude", exc)
         changed = backend_state.mark_gemini_failed()
         if changed:
             await send({"type": "backend_switch", "agent": agent_id,
                         **backend_state.status_dict()})
+        if backend_state.should_use_claude():
+            return await run_claude_agent(agent_id, prompt, send)
         return await run_tgpt_agent(agent_id, prompt, send, "pollinations")
 
 
@@ -589,7 +596,7 @@ async def run_claude_vision(
 
             response = await asyncio.to_thread(
                 client.models.generate_content,
-                model="gemini-3-flash-preview",
+                model="gemini-3.5-flash",
                 contents=[genai_types.Content(role="user", parts=parts)],
                 config=genai_types.GenerateContentConfig(
                     system_instruction=clean_persona[:2000],
@@ -708,8 +715,8 @@ async def run_agent(
 
     ideal = _classify_model(prompt)
 
+    # Gemini 3.5 Flash is primary. Claude is fallback. tgpt only when both fail.
     if ideal == "gemini":
-        # Prefer Gemini for this task type
         if backend_state.gemini_available():
             await _notify_backend("gemini")
             return await run_gemini_agent(agent_id, prompt, send)
@@ -719,7 +726,7 @@ async def run_agent(
         await _notify_backend("tgpt")
         return await run_tgpt_agent(agent_id, prompt, send, "pollinations")
 
-    # ideal == "claude" (default)
+    # ideal == "claude" — prefer Claude for code/logic, but Gemini beats tgpt
     if backend_state.should_use_claude():
         await _notify_backend("claude")
         return await run_claude_agent(agent_id, prompt, send)
@@ -757,6 +764,10 @@ async def _execute_tool(
         "write_source":  "🔧",
         "run_tests":     "🧪",
         "generate_image": "🎨",
+        "jira_get":     "🎫",
+        "jira_search":  "🔎",
+        "jira_status":  "🔄",
+        "jira_comment": "💬",
     }
     label_map = {
         "bash":          "Executing Bash",
@@ -777,6 +788,10 @@ async def _execute_tool(
         "write_source":   "Writing Source",
         "run_tests":      "Running Tests",
         "generate_image": "Generating Image",
+        "jira_get":     "Fetching Jira Ticket",
+        "jira_search":  "Searching Jira",
+        "jira_status":  "Updating Jira Status",
+        "jira_comment": "Adding Jira Comment",
     }
 
     path  = tool_args.get("path", tool_args.get("cmd", tool_args.get("target", tool_args.get("url", ""))))
@@ -980,6 +995,19 @@ async def _execute_tool(
                 result = f"Image generated successfully ({img_result['size']} bytes)"
             else:
                 result = f"[Image generation failed: {img_result.get('error', 'unknown')}]"
+
+        elif tool_type == "jira_get":
+            from app.services import jira as jira_svc
+            result = jira_svc.get_ticket(tool_args["ticket_id"])
+        elif tool_type == "jira_search":
+            from app.services import jira as jira_svc
+            result = jira_svc.search_tickets(tool_args["jql"])
+        elif tool_type == "jira_status":
+            from app.services import jira as jira_svc
+            result = jira_svc.update_status(tool_args["ticket_id"], tool_args["transition"])
+        elif tool_type == "jira_comment":
+            from app.services import jira as jira_svc
+            result = jira_svc.add_comment(tool_args["ticket_id"], tool_args["body"])
 
         else:
             handler = skill_loader.get_tool(tool_type)
