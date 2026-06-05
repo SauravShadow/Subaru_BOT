@@ -20,10 +20,14 @@ if not Path(TGPT_BIN).exists():
 # Model constants
 DEFAULT_MODEL = os.environ.get("DEFAULT_MODEL", "claude-sonnet-4-6")
 HAIKU_MODEL   = os.environ.get("HAIKU_MODEL",   "claude-haiku-4-5-20251001")
-OPUS_MODEL    = os.environ.get("OPUS_MODEL",    "claude-opus-4-7")
 
 # Gemini
 GEMINI_API_KEY = os.environ.get("GEMINI_API_KEY", "")
+
+# Jira Cloud
+JIRA_URL   = os.environ.get("JIRA_URL",   "")
+JIRA_EMAIL = os.environ.get("JIRA_EMAIL", "")
+JIRA_TOKEN = os.environ.get("JIRA_TOKEN", "")
 
 # Email / SMTP
 SMTP_HOST     = os.environ.get("SMTP_HOST", "smtp.gmail.com")
