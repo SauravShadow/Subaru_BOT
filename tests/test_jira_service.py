@@ -170,3 +170,67 @@ def test_add_comment_sends_adf_body():
     body = mock_client.post.call_args[1]["json"]["body"]
     assert body["type"] == "doc"
     assert body["content"][0]["content"][0]["text"] == "Hello world"
+
+
+# ── get_context_summary ────────────────────────────────────────────────────────
+
+def test_get_context_summary_happy_path():
+    """Test happy path with two successful requests."""
+    mock_client = MagicMock()
+    mock_client.__enter__ = MagicMock(return_value=mock_client)
+    mock_client.__exit__ = MagicMock(return_value=False)
+
+    # Mock two successful responses
+    r1 = _mock_response({"total": 8})
+    r2 = _mock_response({"total": 3})
+    mock_client.get.side_effect = [r1, r2]
+
+    with patch("httpx.Client", return_value=mock_client):
+        from app.services.jira import get_context_summary
+        result = get_context_summary()
+
+    assert result.startswith("JIRA SNAPSHOT:")
+    assert "Open: 8" in result
+    assert "In Progress: 3" in result
+
+
+def test_get_context_summary_on_exception():
+    """Test that exception returns empty string."""
+    mock_client = MagicMock()
+    mock_client.__enter__ = MagicMock(side_effect=Exception("unreachable"))
+    mock_client.__exit__ = MagicMock(return_value=False)
+
+    with patch("httpx.Client", return_value=mock_client):
+        from app.services.jira import get_context_summary
+        result = get_context_summary()
+
+    assert result == ""
+
+
+def test_get_context_summary_makes_two_requests():
+    """Test that exactly 2 GET requests are made."""
+    mock_client = MagicMock()
+    mock_client.__enter__ = MagicMock(return_value=mock_client)
+    mock_client.__exit__ = MagicMock(return_value=False)
+
+    # Mock two successful responses
+    r1 = _mock_response({"total": 8})
+    r2 = _mock_response({"total": 3})
+    mock_client.get.side_effect = [r1, r2]
+
+    with patch("httpx.Client", return_value=mock_client):
+        from app.services.jira import get_context_summary
+        get_context_summary()
+
+    # Verify exactly 2 GET requests were made
+    assert mock_client.get.call_count == 2
+
+    # Verify the first request was for unresolved tickets
+    first_call = mock_client.get.call_args_list[0]
+    assert first_call[0][0] == "/rest/api/3/issue/search"
+    assert first_call[1]["params"]["jql"] == "resolution = Unresolved"
+
+    # Verify the second request was for in-progress tickets
+    second_call = mock_client.get.call_args_list[1]
+    assert second_call[0][0] == "/rest/api/3/issue/search"
+    assert second_call[1]["params"]["jql"] == 'status = "In Progress"'

@@ -45,7 +45,7 @@ _ceo_context_cache: tuple = (0.0, "")
 _CEO_CONTEXT_TTL = 60.0
 
 
-def _get_ceo_context() -> str:
+async def _get_ceo_context() -> str:
     """Returns cached system self-awareness context for the CEO agent (refreshed every 60s)."""
     global _ceo_context_cache
     now = _time()
@@ -87,7 +87,7 @@ def _get_ceo_context() -> str:
 
     try:
         from app.services import jira as jira_svc
-        jira_ctx = jira_svc.get_context_summary()
+        jira_ctx = await asyncio.to_thread(jira_svc.get_context_summary)
         if jira_ctx:
             ctx += "\n" + jira_ctx + "\n"
     except Exception:
@@ -152,7 +152,7 @@ def _build_context_block(agent_id: str, user_query: str) -> str:
         return ""
 
 
-def _build_tgpt_prompt(agent_id: str, user_msg: str) -> str:
+async def _build_tgpt_prompt(agent_id: str, user_msg: str) -> str:
     agent = defs.get_agent(agent_id)
     persona = defs.agent_persona(agent_id)
     history = state.get_history(agent_id)
@@ -162,7 +162,7 @@ def _build_tgpt_prompt(agent_id: str, user_msg: str) -> str:
         for h in history[-(config.MAX_HISTORY):]
     )
 
-    context = _get_ceo_context() if agent_id == "ceo" else ""
+    context = await _get_ceo_context() if agent_id == "ceo" else ""
 
     tool_instructions = f"""
 You are working in the directory: {config.WORK_DIR}
@@ -204,12 +204,12 @@ Always state your approach in 2 sentences before calling your first tool.
     )
 
 
-def _build_claude_prompt(agent_id: str, user_msg: str) -> str:
+async def _build_claude_prompt(agent_id: str, user_msg: str) -> str:
     """Prompt for Claude CLI — no tgpt tool syntax; Claude uses its own native tools."""
     agent   = defs.get_agent(agent_id)
     persona = defs.agent_persona(agent_id)
     history = state.get_history(agent_id)
-    context = _get_ceo_context() if agent_id == "ceo" else ""
+    context = await _get_ceo_context() if agent_id == "ceo" else ""
 
     hist_str = "\n".join(
         f"{'User' if h['role'] == 'user' else agent['name']}: {_truncate_content(h['content'])}"
@@ -322,7 +322,7 @@ async def run_tgpt_agent(
         if turn > 0:
             await asyncio.sleep(1.5)   # pace requests
 
-        full_input = _build_tgpt_prompt(agent_id, current_prompt)
+        full_input = await _build_tgpt_prompt(agent_id, current_prompt)
         turn_text  = await _run_tgpt_turn(full_input, agent_id, send, provider)
 
 
@@ -368,8 +368,9 @@ async def run_claude_agent(
 ) -> str:
     """Single-pass Claude CLI agent (streaming JSON). Falls back to tgpt on quota errors."""
     full_resp = ""
+    claude_prompt = await _build_claude_prompt(agent_id, prompt)
     args = [
-        config.CLAUDE_BIN, "-p", _build_claude_prompt(agent_id, prompt),
+        config.CLAUDE_BIN, "-p", claude_prompt,
         "--output-format", "stream-json",
         "--verbose",
         "--model", config.DEFAULT_MODEL,
