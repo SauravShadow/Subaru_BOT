@@ -255,6 +255,22 @@ def parse_tool_call(text: str) -> Tuple[Optional[str], Optional[dict]]:
     if m:
         return "generate_image", {"prompt": m.group(1).strip()}
 
+    m = re.search(r'\[JIRA_GET:\s*([^\]]+)\]', text)
+    if m:
+        return "jira_get", {"ticket_id": m.group(1).strip()}
+
+    m = re.search(r'\[JIRA_SEARCH:\s*(.*?)\]', text, re.DOTALL)
+    if m:
+        return "jira_search", {"jql": m.group(1).strip()}
+
+    m = re.search(r'\[JIRA_STATUS:\s*([^:\]]+):\s*([^\]]+)\]', text)
+    if m:
+        return "jira_status", {"ticket_id": m.group(1).strip(), "transition": m.group(2).strip()}
+
+    m = re.search(r'\[JIRA_COMMENT:\s*([^:\]]+):\s*(.*?)\]', text, re.DOTALL)
+    if m:
+        return "jira_comment", {"ticket_id": m.group(1).strip(), "body": m.group(2).strip()}
+
     return None, None
 
 
