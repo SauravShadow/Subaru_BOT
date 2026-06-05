@@ -85,7 +85,18 @@ WEB TOOLS (use in sequence for login flows):
     [WEB_TYPE:input[name="Passwd"]:$CRED_GMAIL_PASS]
     [WEB_CLICK:#passwordNext]
     [WEB_WAIT:.inbox]
-    [WEB_GET_TEXT]"""
+    [WEB_GET_TEXT]
+
+JIRA TOOLS (read tickets, update status, add comments):
+  [JIRA_GET:PROJ-123]                  — fetch ticket details + last 5 comments
+  [JIRA_SEARCH:assignee = "Name"]      — search by JQL (assignee, project, status, etc.)
+  [JIRA_STATUS:PROJ-123:In Progress]   — update status (use exact transition name from board)
+  [JIRA_COMMENT:PROJ-123:your message] — add a comment to a ticket
+
+  Examples:
+    "show all Reinhard's tasks"  → [JIRA_SEARCH:assignee = "Reinhard van Astrea" AND resolution = Unresolved]
+    "mark NEXUS-5 as done"       → [JIRA_STATUS:NEXUS-5:Done]
+    "add comment to NEXUS-3"     → [JIRA_COMMENT:NEXUS-3:Reviewed and approved]"""
 
 
 def _worker_persona(name: str, role: str, stack: str, extra: str = ""):

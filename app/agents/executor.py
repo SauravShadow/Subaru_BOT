@@ -84,6 +84,15 @@ def _get_ceo_context() -> str:
         f"Modifiable app files:\n{file_list}\n\n"
         f"Recent self-improvements:\n{changelog_str}\n"
     )
+
+    try:
+        from app.services import jira as jira_svc
+        jira_ctx = jira_svc.get_context_summary()
+        if jira_ctx:
+            ctx += "\n" + jira_ctx + "\n"
+    except Exception:
+        pass
+
     _ceo_context_cache = (now, ctx)
     return ctx
 
