@@ -75,14 +75,20 @@ async def fetch_new_emails(max_emails: int = 10) -> list:
                 mail.store(mid, "+FLAGS", "\\Seen")
 
                 results.append({
-                    "message_id":  message_id,
-                    "in_reply_to": in_reply_to,
-                    "references":  references,
-                    "subject":     subject,
-                    "from_email":  from_email,
-                    "from_name":   from_name,
-                    "body":        body_text[:3000],
-                    "date":        msg.get("Date", ""),
+                    "message_id":              message_id,
+                    "in_reply_to":             in_reply_to,
+                    "references":              references,
+                    "subject":                 subject,
+                    "from_email":              from_email,
+                    "from_name":               from_name,
+                    "body":                    body_text[:3000],
+                    "date":                    msg.get("Date", ""),
+                    # Automation-detection headers
+                    "auto_submitted":          msg.get("Auto-Submitted", "").lower(),
+                    "precedence":              msg.get("Precedence", "").lower(),
+                    "list_id":                 msg.get("List-ID", ""),
+                    "x_auto_response_suppress": msg.get("X-Auto-Response-Suppress", "").lower(),
+                    "x_mailer":                msg.get("X-Mailer", ""),
                 })
 
             mail.logout()

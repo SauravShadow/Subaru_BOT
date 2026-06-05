@@ -42,6 +42,78 @@ def _is_trusted(email_addr: str) -> bool:
     return email_addr.lower() == TRUSTED_EMAIL
 
 
+# ── Automated-email detection ─────────────────────────────────────────────────
+
+# Sender address patterns that are always automated (never real humans)
+_NOREPLY_PATTERNS = (
+    "noreply", "no-reply", "do-not-reply", "donotreply",
+    "mailer-daemon", "postmaster", "bounce", "notifications@",
+    "alert@", "alerts@", "support@jira", "notify@",
+)
+
+# Sender domains whose emails we should never process
+_AUTOMATED_DOMAINS = {
+    "atlassian.com", "atlassian.net", "jira.com",
+    "github.com", "gitlab.com", "gitlab-org.gitlab.io",
+    "slack.com", "trello.com", "confluence.atlassian.com",
+    "accounts.google.com", "security.google.com", "no-reply.accounts.google.com",
+    "workspace-noreply.google.com", "googlecloud.com",
+    "amazonses.com", "sendgrid.net", "mailchimpapp.com",
+    "hubspot.com", "zendesk.com", "servicenow.com",
+    "linkedin.com", "twitter.com", "x.com", "facebook.com",
+    "paypal.com", "stripe.com", "digitalocean.com",
+    "microsoft.com", "azure.com", "azure-notifications.com",
+    "notifications.dropbox.com", "figma.com",
+}
+
+# Subject patterns that indicate automated / notification emails
+_AUTOMATED_SUBJECT_PATTERNS = (
+    "[jira]", "[confluence]", "[github]", "[gitlab]", "[trello]",
+    "activity on", "new comment on", "mentioned you in",
+    "your google account", "sign-in attempt", "security alert",
+    "new sign-in", "your password", "verify your email",
+    "email confirmation", "account confirmation", "confirm your",
+    "invoice from", "payment receipt", "order confirmation",
+    "unsubscribe", "you have been added", "has been assigned",
+    "build failed", "build succeeded", "pipeline",
+    "access request", "access granted",
+)
+
+
+def _is_automated_email(email: dict) -> bool:
+    """Return True for automated/system emails that should never be replied to."""
+    from_addr = (email.get("from_email") or "").lower()
+    subject   = (email.get("subject")    or "").lower()
+
+    # Standard RFC headers that mark automated mail
+    if email.get("auto_submitted") and email["auto_submitted"] not in ("", "no"):
+        return True
+    if email.get("precedence") in ("bulk", "list", "junk"):
+        return True
+    if email.get("list_id"):          # mailing list
+        return True
+    if "all" in email.get("x_auto_response_suppress", ""):
+        return True
+
+    # noreply-style address patterns
+    if any(p in from_addr for p in _NOREPLY_PATTERNS):
+        return True
+
+    # Automated sender domain
+    domain = from_addr.split("@")[-1] if "@" in from_addr else ""
+    if domain in _AUTOMATED_DOMAINS:
+        return True
+    # Also catch subdomains, e.g. notifications.atlassian.com
+    if any(domain.endswith("." + d) for d in _AUTOMATED_DOMAINS):
+        return True
+
+    # Subject-line heuristics
+    if any(pat in subject for pat in _AUTOMATED_SUBJECT_PATTERNS):
+        return True
+
+    return False
+
+
 def _extract_reply_body(body: str) -> str:
     """Strip quoted lines (>) and 'On ... wrote:' separators."""
     lines = []
@@ -218,8 +290,36 @@ async def _run_execution(task: dict, approval_text: str):
             f"Original request:\n{task['body']}\n\n"
             f"Agreed plan:\n{task['plan']}\n\n"
             f"User confirmation / clarification:\n{approval_text}\n\n"
-            "Execute this now using your tools. When done, write a full "
-            "completion report suitable for emailing back to the user."
+            "Execute this now using your tools.\n\n"
+            "If this task involves building or deploying a website, app, or service, "
+            "follow these MANDATORY DEPLOYMENT STEPS:\n\n"
+            "1. BUILD: Write all project files to /workspace/<project-name>/\n\n"
+            "2. DOCKERFILE: Write a Dockerfile before launching.\n"
+            "   Minimum:\n"
+            "     FROM python:3.12-slim\n"
+            "     WORKDIR /app\n"
+            "     COPY requirements.txt .\n"
+            "     RUN pip install --no-cache-dir -r requirements.txt\n"
+            "     COPY . .\n"
+            "     EXPOSE <port>\n"
+            "     CMD [\"python3\", \"-m\", \"uvicorn\", \"main:app\", \"--host\", \"0.0.0.0\", \"--port\", \"<port>\"]\n\n"
+            "3. CHECK PORTS: GET http://host.docker.internal:3030/api/port-registry\n"
+            "   Pick an unused port from 8100-8999.\n\n"
+            "4. BUILD IMAGE via sidecar:\n"
+            "   POST http://host.docker.internal:3030/api/run-host-command\n"
+            "   {\"cmd\": \"docker build -t <project-name> /home/subaru/projects/<project-name>\"}\n\n"
+            "5. LAUNCH via sidecar — include subdomain to auto-wire Cloudflare DNS + tunnel:\n"
+            "   POST http://host.docker.internal:3030/api/start-service\n"
+            "   {\"name\":\"<project-name>\",\"cwd\":\"/workspace/<project-name>\","
+            "\"cmd\":\"docker run --name <project-name> -p <port>:<port> --restart unless-stopped <project-name>\","
+            "\"port\":<port>,\"subdomain\":\"<url-safe-project-name>\"}\n"
+            "   The subdomain must be URL-safe (lowercase letters, digits, hyphens only).\n"
+            "   Derive it from the project name (e.g. 'expense-tracker' → subdomain 'expense').\n"
+            "   Including the subdomain auto-wires Cloudflare and makes the site live at "
+            "<subdomain>.saurav-info.xyz immediately.\n\n"
+            "6. VERIFY: curl http://127.0.0.1:<port>/\n\n"
+            "When done, write a full completion report. "
+            "If deployed, include the live URL (https://<subdomain>.saurav-info.xyz) prominently."
         )
     else:
         prompt = (
@@ -536,6 +636,12 @@ async def _process_new_email(email: dict):
 
 async def _safe_process(em: dict):
     """Process one email, catching exceptions so one bad email can't kill the whole poll."""
+    if _is_automated_email(em):
+        logger.info(
+            "Skipping automated/system email from %s — subject: %s",
+            em.get("from_email"), em.get("subject"),
+        )
+        return
     try:
         existing = _find_task_by_reply(
             em.get("in_reply_to", ""),

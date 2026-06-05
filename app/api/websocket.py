@@ -73,9 +73,14 @@ class Session:
                 if "_raw_json" in data:
                     await self.ws.send_text(data["_raw_json"])
                 else:
+                    if data.get("type") == "audio":
+                        audio_len = len(data.get("data", ""))
+                        logger.info("WS send: audio payload %d bytes", audio_len)
                     await self.ws.send_json(data)
+                    if data.get("type") == "audio":
+                        logger.info("WS send: audio sent successfully")
             except Exception as exc:
-                logger.debug("WS send error (likely disconnected): %s", exc)
+                logger.warning("WS send error (type=%s): %s", data.get("type"), exc)
 
     def make_sender(self, agent_id: str):
         """Return a Sender coroutine that always tags the agent_id."""
@@ -102,6 +107,7 @@ async def _run_worker_bg(
     task_id: int,
 ) -> None:
     """Execute a delegated task in the background, streaming updates to the browser."""
+    _completed_ok = False
     try:
         send = session.make_sender(agent_id)
 
@@ -138,6 +144,7 @@ async def _run_worker_bg(
         await session.send({"type": "task_history_update",
                             "task_history": list(reversed(state.task_history))})
         await session.send({"type": "done", "agent": agent_id})
+        _completed_ok = True
 
     except asyncio.CancelledError:
         logger.info("Worker %s task %d cancelled", agent_id, task_id)
@@ -154,9 +161,34 @@ async def _run_worker_bg(
         await session.send({"type": "error", "agent": agent_id, "message": str(exc)})
     finally:
         session.worker_tasks.pop(agent_id, None)
+        if _completed_ok:
+            # Chain to next pending task for this agent (sequential queue processing)
+            next_item = next(
+                (i for i in state.work_queue
+                 if i.get("agent") == agent_id and i.get("status") == "pending"),
+                None,
+            )
+            if next_item:
+                bg = asyncio.create_task(
+                    _run_worker_bg(session, agent_id, next_item["task"], next_item["id"])
+                )
+                session.bg_tasks.add(bg)
+                bg.add_done_callback(session.bg_tasks.discard)
+                session.worker_tasks[agent_id] = bg
+                logger.info(
+                    "Chaining to next pending task #%d for agent '%s'",
+                    next_item["id"], agent_id,
+                )
 
 
 # ── Message router ─────────────────────────────────────────────────────────────
+
+async def _heartbeat_loop(session: Session) -> None:
+    """Send periodic heartbeats so proxies/firewalls don't drop idle connections."""
+    while True:
+        await asyncio.sleep(5)
+        await session.send({"type": "heartbeat"})
+
 
 async def _handle_message(session: Session, agent_id: str, text: str) -> None:
     """Execute a user message to a specific agent."""
@@ -165,7 +197,11 @@ async def _handle_message(session: Session, agent_id: str, text: str) -> None:
 
     await session.send({"type": "thinking", "agent": agent_id})
 
-    full_resp = await run_agent(agent_id, text, send, session.model)
+    hb = asyncio.create_task(_heartbeat_loop(session))
+    try:
+        full_resp = await run_agent(agent_id, text, send, session.model)
+    finally:
+        hb.cancel()
 
     # Handle CEO delegations
     if agent_id == "ceo":
@@ -263,6 +299,37 @@ async def ws_endpoint(ws: WebSocket, model: str = Query(default="claude")) -> No
         "task_history": list(reversed(state.task_history)),
         "skills":       skill_loader.list_tools(),
     })
+    # Clear any stale thinking/spinner state from a previous disconnected session
+    for agent_id in agents:
+        await session.send({"type": "done", "agent": agent_id})
+
+    # Reset tasks left as "running" by a previous session whose workers were cancelled
+    stale = [i for i in state.work_queue if i.get("status") == "running"]
+    if stale:
+        for item in stale:
+            item["status"] = "pending"
+        state.save_state()
+        logger.info("Reset %d stale 'running' task(s) to pending on new connection", len(stale))
+
+    # Auto-resume pending background tasks — one per agent, in queue order
+    resumed: set[str] = set()
+    for item in state.work_queue:
+        if item.get("status") != "pending":
+            continue
+        worker_agent = item.get("agent", "")
+        if worker_agent not in agents or worker_agent in resumed:
+            continue
+        resumed.add(worker_agent)
+        bg = asyncio.create_task(
+            _run_worker_bg(session, worker_agent, item["task"], item["id"])
+        )
+        session.bg_tasks.add(bg)
+        bg.add_done_callback(session.bg_tasks.discard)
+        session.worker_tasks[worker_agent] = bg
+        logger.info("Auto-resuming pending task #%d for agent '%s'", item["id"], worker_agent)
+
+    if resumed:
+        await session.send({"type": "queue_update", "work_queue": state.work_queue})
 
     try:
         while True:
@@ -318,8 +385,8 @@ async def ws_endpoint(ws: WebSocket, model: str = Query(default="claude")) -> No
             elif msg_type == "ping":
                 await session.send({"type": "pong"})
 
-    except WebSocketDisconnect:
-        logger.info("WebSocket disconnected")
+    except WebSocketDisconnect as exc:
+        logger.info("WebSocket disconnected (code=%s reason=%r)", exc.code, exc.reason)
     except Exception as exc:
         logger.exception("WS handler error: %s", exc)
         try:

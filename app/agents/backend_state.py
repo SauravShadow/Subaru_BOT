@@ -1,8 +1,9 @@
 """
-backend_state.py — 3-tier backend switching: Claude CLI → Gemini API → tgpt.
+backend_state.py — 3-tier backend switching: Gemini 3.5 Flash → Claude → tgpt.
 
-Claude Sonnet is preferred. On quota exhaustion, falls to Gemini API.
-On Gemini error, falls to tgpt. Each tier has its own retry window.
+Gemini 3.5 Flash is preferred. On Gemini error, falls to Claude.
+Only when both Gemini and Claude are unavailable does it fall to tgpt.
+Each tier has its own retry window.
 """
 import logging
 from datetime import datetime, timedelta

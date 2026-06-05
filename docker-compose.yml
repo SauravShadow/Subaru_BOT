@@ -37,14 +37,12 @@ services:
     restart: unless-stopped
 
   bark-svc:
-    build: ./bark-svc
+    build: ./bark-lite
     container_name: bark-svc
-    volumes:
-      - /mnt/HC_Volume_105874680/bark-models:/root/.cache/suno/bark_v0
     restart: unless-stopped
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:9001/health"]
+      test: ["CMD", "curl", "-f", "http://127.0.0.1:9001/health"]
       interval: 10s
       timeout: 5s
-      retries: 30
-      start_period: 120s
+      retries: 5
+      start_period: 15s

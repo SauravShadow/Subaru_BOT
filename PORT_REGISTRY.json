@@ -64,6 +64,21 @@
       "subdomain": "ping",
       "service": "ping-site",
       "note": ""
+    },
+    "8095": {
+      "subdomain": "rezero",
+      "service": "rezero-site",
+      "note": ""
+    },
+    "8500": {
+      "subdomain": "",
+      "service": "book-recommender",
+      "note": "cwd:/home/subaru/projects/book-recommender"
+    },
+    "8600": {
+      "subdomain": "cid",
+      "service": "",
+      "note": ""
     }
   },
   "subdomains": {
@@ -78,7 +93,9 @@
     "stream": 9000,
     "tree": 8300,
     "quotes": 8085,
-    "ping": 8400
+    "ping": 8400,
+    "rezero": 8095,
+    "cid": 8600
   },
   "reserved_ports": [
     80,
@@ -88,5 +105,5 @@
     22,
     8080
   ],
-  "next_suggested_port": 8500
+  "next_suggested_port": 8700
 }
