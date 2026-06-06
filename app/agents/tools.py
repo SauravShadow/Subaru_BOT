@@ -284,7 +284,7 @@ def parse_tool_call(text: str) -> Tuple[Optional[str], Optional[dict]]:
         parts = [p.strip() for p in raw.split("|")]
         if len(parts) >= 2 and parts[1].lower() not in _KNOWN_PLATFORMS:
             return "browser_discover", {
-                "keywords": raw.strip(),
+                "keywords": parts[0],
                 "platform": "linkedin",
                 "location": "Bangalore",
             }

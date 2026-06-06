@@ -30,6 +30,14 @@ def test_parse_browser_discover_defaults():
     assert args["location"] == "Bangalore"
 
 
+def test_parse_browser_discover_non_platform_second_part():
+    tool, args = parse_tool_call("[BROWSER_DISCOVER: React developer | remote]")
+    assert tool == "browser_discover"
+    assert args["keywords"] == "React developer"
+    assert args["platform"] == "linkedin"
+    assert args["location"] == "Bangalore"
+
+
 def test_parse_browser_company():
     tool, args = parse_tool_call("[BROWSER_COMPANY: Stripe]")
     assert tool == "browser_company"
