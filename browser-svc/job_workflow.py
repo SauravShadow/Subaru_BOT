@@ -16,7 +16,12 @@ PROFILE_PATH = Path("/app/browser_profile.json")
 
 
 def load_profile() -> dict:
-    return json.loads(PROFILE_PATH.read_text())
+    try:
+        return json.loads(PROFILE_PATH.read_text())
+    except FileNotFoundError:
+        raise RuntimeError(f"Browser profile not found at {PROFILE_PATH}") from None
+    except json.JSONDecodeError as exc:
+        raise RuntimeError(f"Browser profile JSON is malformed: {exc}") from exc
 
 
 @dataclass
@@ -65,10 +70,14 @@ def _resolve_field(label_text: str, profile: dict) -> Optional[str]:
     return None
 
 
+_CARRIER = {"careers", "jobs", "apply", "boards", "hire", "work", "talent"}
+
+
 def _guess_company(url: str) -> str:
     host = urlparse(url).netloc.lower()
     parts = host.replace("www.", "").split(".")
-    return parts[0].capitalize() if parts else "Unknown"
+    label = parts[0] if parts[0] not in _CARRIER else (parts[-2] if len(parts) >= 2 else parts[0])
+    return label.capitalize() if label else "Unknown"
 
 
 # ── Job description extraction ─────────────────────────────────────────────────
@@ -108,7 +117,7 @@ async def fill_form_fields(page: "Page", profile: dict) -> int:
             inp_placeholder = await inp.get_attribute("placeholder") or ""
             inp_aria = await inp.get_attribute("aria-label") or ""
             label_text = ""
-            if inp_id:
+            if inp_id and re.match(r'^[\w\-]+$', inp_id):
                 label_el = page.locator(f"label[for='{inp_id}']")
                 if await label_el.count() > 0:
                     label_text = await label_el.first.inner_text()
@@ -125,6 +134,13 @@ async def fill_form_fields(page: "Page", profile: dict) -> int:
 
 async def attach_cv(page: "Page", cv_path: str) -> bool:
     from stealth import human_delay
+    p = Path(cv_path).resolve()
+    if not p.exists():
+        logger.warning("CV file not found: %s", cv_path)
+        return False
+    if p.suffix.lower() != ".pdf":
+        logger.warning("CV file is not a PDF: %s", cv_path)
+        return False
     for selector in [
         "input[type='file'][accept*='pdf']",
         "input[type='file']",
@@ -133,7 +149,7 @@ async def attach_cv(page: "Page", cv_path: str) -> bool:
         try:
             file_input = page.locator(selector).first
             if await file_input.count() > 0:
-                await file_input.set_input_files(cv_path)
+                await file_input.set_input_files(str(p))
                 await human_delay(500, 1000)
                 return True
         except Exception:
@@ -151,9 +167,13 @@ async def _apply_linkedin_easy(page: "Page", profile: dict, cv_path: str) -> boo
             return False
         await easy_btn.click()
         await human_delay(1000, 2000)
+        cv_attached = False
         for _ in range(10):
             await fill_form_fields(page, profile)
-            await attach_cv(page, cv_path)
+            if not cv_attached:
+                attached = await attach_cv(page, cv_path)
+                if attached:
+                    cv_attached = True
             submit_btn = page.locator(
                 "button:has-text('Submit application'), button:has-text('Review')"
             ).first
@@ -213,7 +233,11 @@ async def apply_to_job(
     slot_info: Optional["SlotInfo"] = None,
     overleaf_page: Optional["Page"] = None,
 ) -> ApplyResult:
-    profile = load_profile()
+    try:
+        profile = load_profile()
+    except RuntimeError as exc:
+        logger.error("Skipping %s — %s", url, exc)
+        return ApplyResult(url=url, company=_guess_company(url), role="", status="skipped", error=str(exc))
     company = _guess_company(url)
     role = ""
     try:
@@ -232,7 +256,6 @@ async def apply_to_job(
             cv_path = str(await tailor_and_export(overleaf_page, jd, company, role))
         if slot_info:
             slot_info.action = f"Applying to {company}"
-        await page.goto(url, wait_until="domcontentloaded", timeout=30000)
         ok = await _apply_linkedin_easy(page, profile, cv_path)
         if not ok:
             ok = await _apply_generic_ats(page, profile, cv_path)
@@ -306,7 +329,7 @@ async def discover_company_roles(
     urls = []
     for role in target_roles:
         try:
-            role_links = await page.locator(f"a:has-text('{role}')").all()
+            role_links = await page.locator("a").filter(has_text=role).all()
             for rl in role_links[:3]:
                 href = await rl.get_attribute("href")
                 if href:

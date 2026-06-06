@@ -53,7 +53,7 @@ def test_guess_company_linkedin():
 
 
 def test_guess_company_careers_subdomain():
-    assert _guess_company("https://careers.stripe.com/apply/123") == "Careers"
+    assert _guess_company("https://careers.stripe.com/apply/123") == "Stripe"
 
 
 def test_guess_company_custom_domain():
