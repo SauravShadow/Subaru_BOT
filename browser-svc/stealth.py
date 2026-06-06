@@ -33,7 +33,8 @@ def random_viewport() -> dict:
 
 async def apply_stealth(context: "BrowserContext") -> None:
     try:
-        from playwright_stealth import stealth_async as _sa  # noqa: F401
+        from playwright_stealth import stealth_async
+        await stealth_async(context)
     except ImportError:
         pass
     await context.add_init_script(_STEALTH_SCRIPT)
