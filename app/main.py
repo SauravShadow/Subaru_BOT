@@ -3,6 +3,7 @@ Shadow Garden — FastAPI application factory.
 Initialises the app, mounts static files, registers routes and WS endpoint.
 """
 import logging
+import os
 from pathlib import Path
 
 import asyncio
@@ -11,10 +12,12 @@ from typing import Optional
 from fastapi import FastAPI, WebSocket, Query
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
+from fastapi.websockets import WebSocketDisconnect
 
 from app.state.manager import load_state
 from app.api import router as api_router_module
 from app.api import websocket as ws_module
+from app.api.websocket import broadcast_event
 
 logging.basicConfig(
     level=logging.INFO,
@@ -72,20 +75,30 @@ async def websocket_endpoint(ws: WebSocket, model: str = Query(default="claude")
     await ws_module.ws_endpoint(ws, model)
 
 
+logger = logging.getLogger(__name__)
+
+
 @app.websocket("/ws/browser-relay")
 async def browser_relay_endpoint(ws: WebSocket):
     """Receives browser_frame events from browser-svc and broadcasts to all frontend sessions."""
-    from app.api.websocket import broadcast_event
     await ws.accept()
+    secret = os.environ.get("BROWSER_RELAY_SECRET", "")
+    if secret:
+        auth = ws.headers.get("authorization", "")
+        if auth != f"Bearer {secret}":
+            await ws.close(code=4401)
+            return
     try:
         while True:
             try:
                 data = await ws.receive_json()
-            except Exception:
+            except WebSocketDisconnect:
                 break
+            except Exception:
+                break  # malformed JSON — disconnect
             await broadcast_event(data)
     except Exception:
-        pass
+        logger.exception("browser_relay_endpoint error")
 
 
 # ── Static frontend ────────────────────────────────────────────────────────────
