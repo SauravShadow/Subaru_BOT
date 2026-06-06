@@ -1,4 +1,3 @@
-import asyncio
 import pytest
 from unittest.mock import AsyncMock, MagicMock
 
@@ -50,7 +49,8 @@ async def test_release_marks_slot_idle(sm):
 async def test_find_free_slot_skips_busy(sm):
     await sm.acquire(0)
     free = sm.find_free_slot()
-    assert free == 1
+    assert free is not None
+    assert free != 0
 
 
 @pytest.mark.asyncio

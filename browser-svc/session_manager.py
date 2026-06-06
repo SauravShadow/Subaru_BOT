@@ -40,6 +40,14 @@ class SessionManager:
         )
 
     async def stop(self):
+        for slot in self._slots:
+            if slot.context is not None:
+                try:
+                    await slot.context.close()
+                except Exception:
+                    pass
+                slot.context = None
+                slot.page = None
         if self._browser:
             await self._browser.close()
         if self._pw:
@@ -54,7 +62,12 @@ class SessionManager:
                 slot.context = await self._browser.new_context(
                     viewport={"width": 1280, "height": 900},
                 )
-                slot.page = await slot.context.new_page()
+                try:
+                    slot.page = await slot.context.new_page()
+                except Exception:
+                    await slot.context.close()
+                    slot.context = None
+                    raise
             slot.state = SlotState.BUSY
             return slot
 
@@ -78,11 +91,14 @@ class SessionManager:
         return None
 
     async def start_screencast(self, slot_id: int, relay) -> None:
-        slot = self._slots[slot_id]
-        if slot.page is None or slot.cdp_session is not None:
-            return
-        cdp = await slot.context.new_cdp_session(slot.page)
-        slot.cdp_session = cdp
+        async with self._lock:
+            slot = self._slots[slot_id]
+            if slot.page is None:
+                raise RuntimeError(f"Slot {slot_id} has no page — cannot start screencast")
+            if slot.cdp_session is not None:
+                return
+            cdp = await slot.context.new_cdp_session(slot.page)
+            slot.cdp_session = cdp
 
         async def on_frame(event):
             relay.push({
@@ -107,14 +123,17 @@ class SessionManager:
         })
 
     async def stop_screencast(self, slot_id: int) -> None:
-        slot = self._slots[slot_id]
-        if slot.cdp_session is None:
-            return
+        async with self._lock:
+            slot = self._slots[slot_id]
+            if slot.cdp_session is None:
+                return
+            cdp = slot.cdp_session
+            slot.cdp_session = None
+
         try:
-            await slot.cdp_session.send("Page.stopScreencast")
+            await cdp.send("Page.stopScreencast")
         except Exception:
             pass
-        slot.cdp_session = None
 
 
 session_manager = SessionManager()
