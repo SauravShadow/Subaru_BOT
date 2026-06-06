@@ -33,11 +33,15 @@ async def enhance_cv(job_description: str, latex_source: str) -> CVEdit:
     )
     raw = msg.content[0].text.strip()
     if raw.startswith("```"):
-        parts = raw.split("```")
-        raw = parts[1]
+        raw = raw.split("```")[1]
         if raw.startswith("json"):
             raw = raw[4:]
-    data = json.loads(raw)
+        raw = raw.strip()
+    raw = raw.strip()
+    try:
+        data = json.loads(raw)
+    except json.JSONDecodeError as e:
+        raise ValueError(f"Claude returned non-JSON response: {raw!r}") from e
     return CVEdit(edits=data.get("edits", []), keywords=data.get("keywords", []))
 
 
