@@ -159,6 +159,9 @@ def local_edit(path_str: str, target: str, replacement: str) -> str:
 
 # ── Tool call parser ───────────────────────────────────────────────────────────
 
+_KNOWN_PLATFORMS = {"linkedin", "naukri", "indeed", "glassdoor", "instahyre"}
+
+
 def parse_tool_call(text: str) -> Tuple[Optional[str], Optional[dict]]:
     if re.search(r'\[READ_INBOX\]', text):
         return "read_inbox", {}
@@ -271,13 +274,20 @@ def parse_tool_call(text: str) -> Tuple[Optional[str], Optional[dict]]:
     if m:
         return "jira_comment", {"ticket_id": m.group(1).strip(), "body": m.group(2).strip()}
 
-    m = re.search(r'\[BROWSER_APPLY:\s*(\S+)\]', text)
+    m = re.search(r'\[BROWSER_APPLY:\s*([^\]]+)\]', text)
     if m:
         return "browser_apply", {"url": m.group(1).strip()}
 
     m = re.search(r'\[BROWSER_DISCOVER:\s*([^\]]+)\]', text)
     if m:
-        parts = [p.strip() for p in m.group(1).split("|")]
+        raw = m.group(1)
+        parts = [p.strip() for p in raw.split("|")]
+        if len(parts) >= 2 and parts[1].lower() not in _KNOWN_PLATFORMS:
+            return "browser_discover", {
+                "keywords": raw.strip(),
+                "platform": "linkedin",
+                "location": "Bangalore",
+            }
         return "browser_discover", {
             "keywords": parts[0] if parts else "",
             "platform": parts[1] if len(parts) > 1 else "linkedin",

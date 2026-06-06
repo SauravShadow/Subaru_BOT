@@ -78,3 +78,18 @@ async def test_call_browser_svc_unreachable_returns_error_string():
         result = await call_browser_svc("browser_apply", {"url": "https://test.com"})
 
     assert "unreachable" in result.lower() or "connection" in result.lower()
+
+
+@pytest.mark.asyncio
+async def test_call_browser_svc_slot_busy_409():
+    with patch("app.services.browser_svc.httpx.AsyncClient") as mock_cls:
+        mock_client = AsyncMock()
+        mock_cls.return_value.__aenter__ = AsyncMock(return_value=mock_client)
+        mock_cls.return_value.__aexit__ = AsyncMock(return_value=False)
+        mock_response = AsyncMock()
+        mock_response.status_code = 409
+        mock_client.post = AsyncMock(return_value=mock_response)
+
+        result = await call_browser_svc("browser_apply", {"url": "https://test.com"})
+
+    assert "slot busy" in result
