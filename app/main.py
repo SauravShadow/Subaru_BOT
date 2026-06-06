@@ -72,6 +72,22 @@ async def websocket_endpoint(ws: WebSocket, model: str = Query(default="claude")
     await ws_module.ws_endpoint(ws, model)
 
 
+@app.websocket("/ws/browser-relay")
+async def browser_relay_endpoint(ws: WebSocket):
+    """Receives browser_frame events from browser-svc and broadcasts to all frontend sessions."""
+    from app.api.websocket import broadcast_event
+    await ws.accept()
+    try:
+        while True:
+            try:
+                data = await ws.receive_json()
+            except Exception:
+                break
+            await broadcast_event(data)
+    except Exception:
+        pass
+
+
 # ── Static frontend ────────────────────────────────────────────────────────────
 
 app.mount("/static", StaticFiles(directory=str(STATIC_DIR)), name="static")
