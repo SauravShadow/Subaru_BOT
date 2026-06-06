@@ -82,13 +82,22 @@ async def _apply_on_slot(slot: SlotInfo, url: str, use_overleaf: bool):
     overleaf_page = None
     overleaf_acquired = False
 
-    try:
-        if use_overleaf and not _slot_is_busy(0):
+    if use_overleaf and not _slot_is_busy(0):
+        try:
             overleaf_slot = await session_manager.acquire(0)
             overleaf_acquired = True
+        except Exception:
+            logger.warning("Could not acquire Overleaf slot for %s — applying without CV tailor", url)
+
+    if overleaf_acquired:
+        try:
             await session_manager.start_screencast(0, relay)
             overleaf_page = overleaf_slot.page
+        except Exception:
+            logger.warning("Overleaf screencast failed for %s — applying without CV tailor", url)
+            overleaf_page = None
 
+    try:
         cv_path = str(CV_DEFAULT_PATH)
         result = await apply_to_job(
             slot.page, url, cv_path,
@@ -98,19 +107,31 @@ async def _apply_on_slot(slot: SlotInfo, url: str, use_overleaf: bool):
         return result
     finally:
         if overleaf_acquired:
-            await session_manager.stop_screencast(0)
-            await session_manager.release(0)
+            try:
+                await session_manager.stop_screencast(0)
+            except Exception:
+                pass
+            try:
+                await session_manager.release(0)
+            except Exception:
+                pass
 
 
 async def _run_apply(url: str, slot_id: int, use_overleaf: bool):
     slot = await session_manager.acquire(slot_id)
+    screencast_started = False
     try:
         await session_manager.start_screencast(slot_id, relay)
+        screencast_started = True
         await _apply_on_slot(slot, url, use_overleaf)
     except Exception:
         logger.exception("_run_apply failed for %s", url)
     finally:
-        await session_manager.stop_screencast(slot_id)
+        if screencast_started:
+            try:
+                await session_manager.stop_screencast(slot_id)
+            except Exception:
+                pass
         await session_manager.release(slot_id)
 
 
@@ -148,8 +169,10 @@ async def discover_endpoint(req: DiscoverRequest, bg: BackgroundTasks):
     async def run():
         from job_workflow import discover_jobs_linkedin, discover_jobs_indeed
         slot = await session_manager.acquire(req.slot_id)
+        screencast_started = False
         try:
             await session_manager.start_screencast(req.slot_id, relay)
+            screencast_started = True
             if req.platform == "indeed":
                 urls = await discover_jobs_indeed(slot.page, req.keywords, req.location)
             else:
@@ -159,7 +182,11 @@ async def discover_endpoint(req: DiscoverRequest, bg: BackgroundTasks):
         except Exception:
             logger.exception("discover run() failed for keywords=%s", req.keywords)
         finally:
-            await session_manager.stop_screencast(req.slot_id)
+            if screencast_started:
+                try:
+                    await session_manager.stop_screencast(req.slot_id)
+                except Exception:
+                    pass
             await session_manager.release(req.slot_id)
 
     bg.add_task(run)
@@ -180,8 +207,10 @@ async def company_apply_endpoint(req: CompanyRequest, bg: BackgroundTasks):
     async def run():
         from job_workflow import discover_company_roles, load_profile
         slot = await session_manager.acquire(req.slot_id)
+        screencast_started = False
         try:
             await session_manager.start_screencast(req.slot_id, relay)
+            screencast_started = True
             profile = load_profile()
             urls = await discover_company_roles(
                 slot.page, req.company, profile.get("target_roles", [])
@@ -191,7 +220,11 @@ async def company_apply_endpoint(req: CompanyRequest, bg: BackgroundTasks):
         except Exception:
             logger.exception("company_apply run() failed for company=%s", req.company)
         finally:
-            await session_manager.stop_screencast(req.slot_id)
+            if screencast_started:
+                try:
+                    await session_manager.stop_screencast(req.slot_id)
+                except Exception:
+                    pass
             await session_manager.release(req.slot_id)
 
     bg.add_task(run)
@@ -214,8 +247,10 @@ async def profile_match_endpoint(req: ProfileMatchRequest, bg: BackgroundTasks):
         companies = profile.get("target_companies", [])
         roles = profile.get("target_roles", [])
         slot = await session_manager.acquire(req.slot_id)
+        screencast_started = False
         try:
             await session_manager.start_screencast(req.slot_id, relay)
+            screencast_started = True
             for company in companies:
                 urls = await discover_company_roles(slot.page, company, roles)
                 for url in urls:
@@ -223,7 +258,11 @@ async def profile_match_endpoint(req: ProfileMatchRequest, bg: BackgroundTasks):
         except Exception:
             logger.exception("profile_match run() failed")
         finally:
-            await session_manager.stop_screencast(req.slot_id)
+            if screencast_started:
+                try:
+                    await session_manager.stop_screencast(req.slot_id)
+                except Exception:
+                    pass
             await session_manager.release(req.slot_id)
 
     bg.add_task(run)
