@@ -81,13 +81,13 @@ logger = logging.getLogger(__name__)
 @app.websocket("/ws/browser-relay")
 async def browser_relay_endpoint(ws: WebSocket):
     """Receives browser_frame events from browser-svc and broadcasts to all frontend sessions."""
-    await ws.accept()
     secret = os.environ.get("BROWSER_RELAY_SECRET", "")
     if secret:
         auth = ws.headers.get("authorization", "")
         if auth != f"Bearer {secret}":
             await ws.close(code=4401)
             return
+    await ws.accept()
     try:
         while True:
             try:
