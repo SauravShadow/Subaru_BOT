@@ -59,6 +59,9 @@ SKILLS_DIR     = Path("/app/skills")
 # Bark TTS sidecar
 BARK_SVC_URL = os.environ.get("BARK_SVC_URL", "http://bark-svc:9001")
 
+# Browser automation sidecar
+BROWSER_SVC_URL = os.environ.get("BROWSER_SVC_URL", "http://browser-svc:9002")
+
 
 def get_credential(name: str) -> str:
     """Resolve CRED_{NAME} from env. Agents use $CRED_NAME in WEB_TYPE args."""

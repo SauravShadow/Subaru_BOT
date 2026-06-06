@@ -271,6 +271,27 @@ def parse_tool_call(text: str) -> Tuple[Optional[str], Optional[dict]]:
     if m:
         return "jira_comment", {"ticket_id": m.group(1).strip(), "body": m.group(2).strip()}
 
+    m = re.search(r'\[BROWSER_APPLY:\s*(\S+)\]', text)
+    if m:
+        return "browser_apply", {"url": m.group(1).strip()}
+
+    m = re.search(r'\[BROWSER_DISCOVER:\s*([^\]]+)\]', text)
+    if m:
+        parts = [p.strip() for p in m.group(1).split("|")]
+        return "browser_discover", {
+            "keywords": parts[0] if parts else "",
+            "platform": parts[1] if len(parts) > 1 else "linkedin",
+            "location": parts[2] if len(parts) > 2 else "Bangalore",
+        }
+
+    m = re.search(r'\[BROWSER_COMPANY:\s*([^\]]+)\]', text)
+    if m:
+        return "browser_company", {"company": m.group(1).strip()}
+
+    m = re.search(r'\[BROWSER_PROFILE_MATCH\]', text)
+    if m:
+        return "browser_profile_match", {}
+
     return None, None
 
 

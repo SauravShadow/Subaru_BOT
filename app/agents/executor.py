@@ -778,6 +778,10 @@ async def _execute_tool(
         "jira_search":  "🔎",
         "jira_status":  "🔄",
         "jira_comment": "💬",
+        "browser_apply":         "🌐",
+        "browser_discover":      "🔍",
+        "browser_company":       "🏢",
+        "browser_profile_match": "👤",
     }
     label_map = {
         "bash":          "Executing Bash",
@@ -802,6 +806,10 @@ async def _execute_tool(
         "jira_search":  "Searching Jira",
         "jira_status":  "Updating Jira Status",
         "jira_comment": "Adding Jira Comment",
+        "browser_apply":         "Applying via Browser",
+        "browser_discover":      "Discovering Jobs",
+        "browser_company":       "Searching Company Careers",
+        "browser_profile_match": "Profile-Matched Job Search",
     }
 
     path  = tool_args.get("path", tool_args.get("cmd", tool_args.get("target", tool_args.get("url", ""))))
@@ -1018,6 +1026,11 @@ async def _execute_tool(
         elif tool_type == "jira_comment":
             from app.services import jira as jira_svc
             result = jira_svc.add_comment(tool_args["ticket_id"], tool_args["body"])
+
+        elif tool_type in ("browser_apply", "browser_discover",
+                           "browser_company", "browser_profile_match"):
+            from app.services.browser_svc import call_browser_svc
+            result = await call_browser_svc(tool_type, tool_args)
 
         else:
             handler = skill_loader.get_tool(tool_type)

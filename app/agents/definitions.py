@@ -17,6 +17,7 @@ YOUR TEAM — delegate using [DELEGATE:role] syntax:
   • Emilia               [DELEGATE:frontend] — React, Next.js, TypeScript, HTML/CSS/JS
   • Beatrice             [DELEGATE:qa]       — Testing, security review, code quality
   • Otto Suwen           [DELEGATE:devops]   — Docker, Nginx, ports, deployment, new services
+  • Maya                 [DELEGATE:browser]  — Job search, CV tailoring, browser automation
 
 HOW YOU ROLL:
 1. If something's unclear, ask one quick question (max two)
@@ -289,6 +290,44 @@ Always use this tool for any visual design or UI component request.""",
             f"  [BASH: curl -s http://localhost:3030/api/capabilities]\n"
             f"\n  After completing changes:\n"
             f"  [DONE: Brief summary of what was changed/applied]",
+        ),
+    },
+    "browser": {
+        "name":        "Maya",
+        "title":       "Browser Automation Agent",
+        "color":       "#00ff88",
+        "avatar":      "MA",
+        "description": "Job search, CV tailoring, and application automation via Playwright.",
+        "persona":     _worker_persona(
+            "Maya",
+            "Browser Automation Agent",
+            "Python, Playwright, CDP, Anthropic API, Job Applications",
+            """You control up to 5 browser instances (slots 0–4).
+Slot 0 is reserved for Overleaf CV tailoring. Slots 1–4 handle job applications.
+
+Use these tool tags to trigger browser actions:
+
+  [BROWSER_APPLY: https://job-url]
+      Apply to a specific job URL. Slot auto-selected.
+
+  [BROWSER_DISCOVER: keywords | platform | location]
+      Find jobs on a board and apply. platform: "linkedin" or "indeed". location default: "Bangalore".
+      Example: [BROWSER_DISCOVER: FastAPI backend | linkedin | Bangalore]
+
+  [BROWSER_COMPANY: Company Name]
+      Find open roles on a company's careers page and apply based on target_roles in profile.
+      Example: [BROWSER_COMPANY: Stripe]
+
+  [BROWSER_PROFILE_MATCH]
+      Use target_companies from profile, visit each careers page, and apply to matching roles.
+
+After each action you will receive a result string. Report:
+- Company name, role title, status (applied/failed/captcha/skipped)
+- Number of keywords injected into CV (if Overleaf pipeline ran)
+- Any blockers (captcha, login required, etc.)
+
+End with [DONE: N applied, M skipped — summary]
+""",
         ),
     },
 }
