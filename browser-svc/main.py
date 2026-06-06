@@ -7,7 +7,7 @@ from fastapi import BackgroundTasks, FastAPI, HTTPException
 from pydantic import BaseModel
 
 from relay_client import relay
-from session_manager import SlotState, session_manager
+from session_manager import SlotInfo, SlotState, session_manager
 
 logger = logging.getLogger(__name__)
 PROFILE_PATH = Path("/app/browser_profile.json")
@@ -61,7 +61,9 @@ class ProfileUpdate(BaseModel):
 
 @app.patch("/profile")
 def update_profile(update: ProfileUpdate):
-    current = json.loads(PROFILE_PATH.read_text()) if PROFILE_PATH.exists() else {}
+    if not PROFILE_PATH.exists():
+        raise HTTPException(404, "Profile not found")
+    current = json.loads(PROFILE_PATH.read_text())
     current.update(update.model_dump(exclude_none=True))
     PROFILE_PATH.write_text(json.dumps(current, indent=2))
     return current
@@ -73,14 +75,13 @@ def _slot_is_busy(slot_id: int) -> bool:
     return session_manager.status()[slot_id]["state"] == SlotState.BUSY
 
 
-async def _run_apply(url: str, slot_id: int, use_overleaf: bool):
+async def _apply_on_slot(slot: SlotInfo, url: str, use_overleaf: bool):
+    """Apply to a job URL using an already-acquired slot (caller handles acquire/release)."""
     from job_workflow import apply_to_job
 
     overleaf_page = None
     overleaf_acquired = False
 
-    slot = await session_manager.acquire(slot_id)
-    await session_manager.start_screencast(slot_id, relay)
     try:
         if use_overleaf and not _slot_is_busy(0):
             overleaf_slot = await session_manager.acquire(0)
@@ -96,11 +97,21 @@ async def _run_apply(url: str, slot_id: int, use_overleaf: bool):
         logger.info("Apply result: %s %s → %s", result.company, result.role, result.status)
         return result
     finally:
-        await session_manager.stop_screencast(slot_id)
-        await session_manager.release(slot_id)
         if overleaf_acquired:
             await session_manager.stop_screencast(0)
             await session_manager.release(0)
+
+
+async def _run_apply(url: str, slot_id: int, use_overleaf: bool):
+    slot = await session_manager.acquire(slot_id)
+    try:
+        await session_manager.start_screencast(slot_id, relay)
+        await _apply_on_slot(slot, url, use_overleaf)
+    except Exception:
+        logger.exception("_run_apply failed for %s", url)
+    finally:
+        await session_manager.stop_screencast(slot_id)
+        await session_manager.release(slot_id)
 
 
 # ── Apply endpoints ────────────────────────────────────────────────────────────
@@ -137,14 +148,16 @@ async def discover_endpoint(req: DiscoverRequest, bg: BackgroundTasks):
     async def run():
         from job_workflow import discover_jobs_linkedin, discover_jobs_indeed
         slot = await session_manager.acquire(req.slot_id)
-        await session_manager.start_screencast(req.slot_id, relay)
         try:
+            await session_manager.start_screencast(req.slot_id, relay)
             if req.platform == "indeed":
                 urls = await discover_jobs_indeed(slot.page, req.keywords, req.location)
             else:
                 urls = await discover_jobs_linkedin(slot.page, req.keywords, req.location)
             for url in urls:
-                await _run_apply(url, req.slot_id, req.use_overleaf)
+                await _apply_on_slot(slot, url, req.use_overleaf)
+        except Exception:
+            logger.exception("discover run() failed for keywords=%s", req.keywords)
         finally:
             await session_manager.stop_screencast(req.slot_id)
             await session_manager.release(req.slot_id)
@@ -167,14 +180,16 @@ async def company_apply_endpoint(req: CompanyRequest, bg: BackgroundTasks):
     async def run():
         from job_workflow import discover_company_roles, load_profile
         slot = await session_manager.acquire(req.slot_id)
-        await session_manager.start_screencast(req.slot_id, relay)
         try:
+            await session_manager.start_screencast(req.slot_id, relay)
             profile = load_profile()
             urls = await discover_company_roles(
                 slot.page, req.company, profile.get("target_roles", [])
             )
             for url in urls:
-                await _run_apply(url, req.slot_id, req.use_overleaf)
+                await _apply_on_slot(slot, url, req.use_overleaf)
+        except Exception:
+            logger.exception("company_apply run() failed for company=%s", req.company)
         finally:
             await session_manager.stop_screencast(req.slot_id)
             await session_manager.release(req.slot_id)
@@ -199,12 +214,14 @@ async def profile_match_endpoint(req: ProfileMatchRequest, bg: BackgroundTasks):
         companies = profile.get("target_companies", [])
         roles = profile.get("target_roles", [])
         slot = await session_manager.acquire(req.slot_id)
-        await session_manager.start_screencast(req.slot_id, relay)
         try:
+            await session_manager.start_screencast(req.slot_id, relay)
             for company in companies:
                 urls = await discover_company_roles(slot.page, company, roles)
                 for url in urls:
-                    await _run_apply(url, req.slot_id, req.use_overleaf)
+                    await _apply_on_slot(slot, url, req.use_overleaf)
+        except Exception:
+            logger.exception("profile_match run() failed")
         finally:
             await session_manager.stop_screencast(req.slot_id)
             await session_manager.release(req.slot_id)
