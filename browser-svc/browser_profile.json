@@ -1,0 +1,12 @@
+{
+  "name": "Saurav Subaru",
+  "email": "sauravsubaru@gmail.com",
+  "phone": "",
+  "linkedin": "",
+  "experience_years": 5,
+  "notice_period": "immediate",
+  "target_roles": ["Backend Engineer", "Python Developer", "ML Engineer"],
+  "target_companies": ["Stripe", "Razorpay", "CRED"],
+  "skills": ["Python", "FastAPI", "ML"],
+  "location_preference": "Bangalore / Remote"
+}
