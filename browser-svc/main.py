@@ -1,4 +1,3 @@
-import json
 import logging
 from contextlib import asynccontextmanager
 from pathlib import Path
@@ -19,5 +18,5 @@ app = FastAPI(title="browser-svc", lifespan=lifespan)
 
 
 @app.get("/health")
-def health():
+async def health():
     return {"status": "ok", "slots": 5}
