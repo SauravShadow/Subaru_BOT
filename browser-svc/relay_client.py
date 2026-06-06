@@ -42,9 +42,12 @@ class RelayClient:
                 ) as ws:
                     logger.info("browser-relay connected to NEXUS")
                     while True:
-                        data = await asyncio.wait_for(
-                            self._queue.get(), timeout=30
-                        )
+                        try:
+                            data = await asyncio.wait_for(
+                                self._queue.get(), timeout=30
+                            )
+                        except asyncio.TimeoutError:
+                            continue
                         await ws.send(json.dumps(data))
             except Exception as exc:
                 logger.warning(

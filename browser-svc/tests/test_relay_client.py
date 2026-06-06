@@ -11,19 +11,19 @@ def test_push_queues_item():
 
 def test_push_drops_oldest_when_full():
     relay = RelayClient()
-    # Fill queue to maxsize
     for i in range(30):
         relay.push({"seq": i})
-    # Now push one more — should drop oldest, queue stays at 30
     relay.push({"seq": 30})
     assert relay._queue.qsize() == 30
-    # The newest item should be in the queue (we can't guarantee order easily,
-    # but qsize should be capped)
+    items = []
+    while not relay._queue.empty():
+        items.append(relay._queue.get_nowait())
+    seqs = [item["seq"] for item in items]
+    assert 0 not in seqs, "oldest item should have been dropped"
+    assert 30 in seqs, "newest item should be present"
 
 
 def test_start_creates_task():
-    import asyncio
-
     async def _run():
         relay = RelayClient()
         relay.start()
