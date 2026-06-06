@@ -45,22 +45,22 @@ async def _get_latex_source(page: "Page") -> str:
 
 
 async def _set_latex_source(page: "Page", content: str) -> None:
-    escaped = content.replace("\\", "\\\\").replace("`", "\\`").replace("${", "\\${")
-    await page.evaluate(f"""
-        () => {{
+    await page.evaluate(
+        """(content) => {
             const cm = window._codeMirror;
-            if (cm) {{
-                cm.setValue(`{escaped}`);
-            }} else {{
+            if (cm) {
+                cm.setValue(content);
+            } else {
                 const editor = document.querySelector('.cm-content');
-                if (editor) {{
+                if (editor) {
                     editor.focus();
                     document.execCommand('selectAll');
-                    document.execCommand('insertText', false, `{escaped}`);
-                }}
-            }}
-        }}
-    """)
+                    document.execCommand('insertText', false, content);
+                }
+            }
+        }""",
+        content,
+    )
 
 
 async def _compile_and_wait(page: "Page", timeout: int = 60) -> bool:
@@ -71,6 +71,15 @@ async def _compile_and_wait(page: "Page", timeout: int = 60) -> bool:
         )
     except Exception:
         await page.keyboard.press("Control+Enter")
+    await asyncio.sleep(2)
+    try:
+        await page.wait_for_selector(
+            ".compile-error, [data-testid='compile-error'], .alert-danger",
+            timeout=3000,
+        )
+        return False
+    except Exception:
+        pass
     try:
         await page.wait_for_selector(
             "[data-testid='pdf-viewer'], .pdf-viewer, iframe[src*='pdf']",
@@ -89,10 +98,7 @@ async def _download_pdf(page: "Page", company: str, role: str) -> Path:
     dest = CV_EXPORTS_DIR / f"cv_{safe_company}_{safe_role}_{date_str}.pdf"
 
     async with page.expect_download() as dl_info:
-        try:
-            await page.click("a[download], button:has-text('Download PDF')", timeout=5000)
-        except Exception:
-            pass
+        await page.click("a[download], button:has-text('Download PDF')", timeout=5000)
     dl = await dl_info.value
     await dl.save_as(str(dest))
     return dest
@@ -115,7 +121,8 @@ async def tailor_and_export(
     try:
         if slot_info:
             slot_info.action = "Logging in to Overleaf"
-        if "overleaf.com" not in page.url:
+        current_url = page.url
+        if not (("overleaf.com/project" in current_url) or ("overleaf.com/dashboard" in current_url)):
             await _login(page)
 
         if slot_info:

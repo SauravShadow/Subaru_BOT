@@ -38,3 +38,17 @@ def test_cv_exports_dir_is_inside_app():
 
 def test_cv_default_path_is_inside_app():
     assert str(op.CV_DEFAULT_PATH) == "/app/cv_default.pdf"
+
+
+@pytest.mark.asyncio
+async def test_set_latex_source_passes_content_as_argument():
+    page = AsyncMock()
+    page.evaluate = AsyncMock()
+    test_content = r"Hello $x$ and `backtick` and ${macro}"
+    await op._set_latex_source(page, test_content)
+    page.evaluate.assert_called_once()
+    # Second positional arg should be the content, not embedded in the JS
+    call_args = page.evaluate.call_args[0]
+    assert len(call_args) == 2
+    assert call_args[1] == test_content
+    assert test_content not in call_args[0]
