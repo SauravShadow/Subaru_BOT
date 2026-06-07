@@ -620,6 +620,14 @@ function dispatch(obj) {
       if ($id("browser-status")) $id("browser-status").textContent = `✓ ${obj.title || obj.url}`;
       break;
 
+    case "browser_frame":
+      handleBrowserFrame(obj);
+      break;
+
+    case "apply_result":
+      logApplyResult(obj);
+      break;
+
     case "approval_requested":
       pushNotif(
         `🔐 Approval needed: ${obj.file_path || "file"} (ID: ${obj.approval_id})`,
@@ -1066,3 +1074,163 @@ document.addEventListener("DOMContentLoaded", () => {
   initDraggableIslands();
   boot();
 });
+
+// ── Browser Board ─────────────────────────────────────────────────────────────
+const _SLOT_LABELS = ["Overleaf (CV)", "Slot 1", "Slot 2", "Slot 3", "Slot 4"];
+const _boardTiles = {};
+
+function initBrowserBoard() {
+  const grid = document.getElementById("browser-board-grid");
+  if (!grid || Object.keys(_boardTiles).length > 0) return;
+  grid.style.cssText =
+    "display:grid;grid-template-columns:repeat(3,1fr);gap:6px;padding:8px;height:calc(100% - 36px);box-sizing:border-box";
+
+  for (let i = 0; i < 5; i++) {
+    const tile = document.createElement("div");
+    tile.style.cssText =
+      "position:relative;background:#0d1117;border:1px solid var(--border);border-radius:6px;overflow:hidden";
+    tile.innerHTML =
+      `<img id="bframe-${i}" src="" style="width:100%;height:100%;object-fit:cover;display:none">` +
+      `<div id="bidle-${i}" style="position:absolute;inset:0;display:flex;align-items:center;justify-content:center;flex-direction:column;gap:4px">` +
+        `<span style="color:var(--muted);font-size:11px">${_SLOT_LABELS[i]}</span>` +
+        `<span style="color:var(--border);font-size:9px">idle</span>` +
+      `</div>` +
+      `<div id="bstatus-${i}" style="position:absolute;bottom:0;left:0;right:0;padding:3px 6px;background:rgba(0,0,0,0.75);font-size:9px;color:#00d4ff;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;display:none"></div>` +
+      `<div id="bbadge-${i}" style="position:absolute;top:4px;right:4px;padding:1px 5px;border-radius:3px;font-size:8px;font-weight:700;background:rgba(0,255,128,0.15);color:#0f0;display:none">LIVE</div>`;
+    grid.appendChild(tile);
+    _boardTiles[i] = {
+      img: document.getElementById(`bframe-${i}`),
+      idle: document.getElementById(`bidle-${i}`),
+      status: document.getElementById(`bstatus-${i}`),
+      badge: document.getElementById(`bbadge-${i}`),
+    };
+  }
+
+  // Log tile
+  const logTile = document.createElement("div");
+  logTile.style.cssText =
+    "background:#0d1117;border:1px solid var(--border);border-radius:6px;padding:8px;overflow-y:auto";
+  logTile.innerHTML =
+    `<div style="font-size:10px;color:#00ff88;margin-bottom:4px;font-weight:600">Apply Log</div>` +
+    `<div id="board-log" style="font-size:9px;color:var(--muted);display:flex;flex-direction:column;gap:3px"></div>`;
+  grid.appendChild(logTile);
+}
+
+function handleBrowserFrame(obj) {
+  const boardEl = document.getElementById("island-board");
+  if (!boardEl) return;
+  initBrowserBoard();
+  const slot = obj.slot != null ? obj.slot : 0;
+  const tile = _boardTiles[slot];
+  if (!tile) return;
+  if (obj.frame) {
+    tile.img.src = "data:image/jpeg;base64," + obj.frame;
+    tile.img.style.display = "block";
+    tile.idle.style.display = "none";
+    tile.badge.style.display = "block";
+  }
+  const label = (obj.action ? obj.action + (obj.url ? "  —  " + obj.url : "") : obj.url) || "";
+  if (label) {
+    tile.status.textContent = label;
+    tile.status.style.display = "block";
+  }
+}
+
+function logApplyResult(obj) {
+  const log = document.getElementById("board-log");
+  if (!log) return;
+  const icon = obj.status === "applied" ? "✓" : obj.status === "captcha" ? "⚠" : "✕";
+  const color = obj.status === "applied" ? "#0f0" : obj.status === "captcha" ? "#fa0" : "#f55";
+  const entry = document.createElement("div");
+  entry.style.color = color;
+  entry.textContent = `${icon} ${obj.company || "?"} — ${obj.role || "?"}: ${obj.status}`;
+  log.insertBefore(entry, log.firstChild);
+  if (log.children.length > 30) log.removeChild(log.lastChild);
+}
+
+// ── Profile Modal ─────────────────────────────────────────────────────────────
+let _profileData = {};
+const _BROWSER_SVC = "http://127.0.0.1:9002";
+
+async function toggleProfileModal() {
+  const modal = document.getElementById("profile-modal");
+  if (modal.style.display !== "none") { closeProfileModal(); return; }
+  try {
+    const r = await fetch(`${_BROWSER_SVC}/profile`);
+    _profileData = await r.json();
+    renderProfileForm(_profileData);
+    modal.style.display = "flex";
+  } catch (e) {
+    alert("browser-svc unreachable — is Docker running?");
+  }
+}
+
+function closeProfileModal() {
+  document.getElementById("profile-modal").style.display = "none";
+}
+
+function renderProfileForm(data) {
+  const simple = ["name", "email", "phone", "linkedin", "notice_period", "location_preference"];
+  const labels = {
+    name: "Full Name", email: "Email", phone: "Phone",
+    linkedin: "LinkedIn URL", notice_period: "Notice Period", location_preference: "Location",
+  };
+  const fields = document.getElementById("profile-form-fields");
+  fields.innerHTML =
+    simple.map(k =>
+      `<div style="margin-bottom:10px">` +
+        `<label style="font-size:11px;color:var(--muted);display:block;margin-bottom:3px">${labels[k]}</label>` +
+        `<input id="pf-${k}" value="${(data[k] || "").replace(/"/g, "&quot;")}"` +
+          ` style="width:100%;background:var(--bg);border:1px solid var(--border);color:var(--text);padding:6px 8px;border-radius:4px;font-size:13px;box-sizing:border-box">` +
+      `</div>`
+    ).join("") +
+    `<div style="margin-bottom:10px">` +
+      `<label style="font-size:11px;color:var(--muted);display:block;margin-bottom:3px">Experience (years)</label>` +
+      `<input id="pf-experience_years" type="number" value="${data.experience_years || 0}"` +
+        ` style="width:100%;background:var(--bg);border:1px solid var(--border);color:var(--text);padding:6px 8px;border-radius:4px;font-size:13px;box-sizing:border-box">` +
+    `</div>` +
+    `<div style="margin-bottom:10px">` +
+      `<label style="font-size:11px;color:var(--muted);display:block;margin-bottom:3px">Target Roles (comma-separated)</label>` +
+      `<input id="pf-target_roles" value="${(data.target_roles || []).join(", ")}"` +
+        ` style="width:100%;background:var(--bg);border:1px solid var(--border);color:var(--text);padding:6px 8px;border-radius:4px;font-size:13px;box-sizing:border-box">` +
+    `</div>` +
+    `<div style="margin-bottom:10px">` +
+      `<label style="font-size:11px;color:var(--muted);display:block;margin-bottom:3px">Target Companies (comma-separated)</label>` +
+      `<input id="pf-target_companies" value="${(data.target_companies || []).join(", ")}"` +
+        ` style="width:100%;background:var(--bg);border:1px solid var(--border);color:var(--text);padding:6px 8px;border-radius:4px;font-size:13px;box-sizing:border-box">` +
+    `</div>` +
+    `<div>` +
+      `<label style="font-size:11px;color:var(--muted);display:block;margin-bottom:3px">Skills (comma-separated)</label>` +
+      `<input id="pf-skills" value="${(data.skills || []).join(", ")}"` +
+        ` style="width:100%;background:var(--bg);border:1px solid var(--border);color:var(--text);padding:6px 8px;border-radius:4px;font-size:13px;box-sizing:border-box">` +
+    `</div>`;
+}
+
+async function saveProfile() {
+  const simple = ["name", "email", "phone", "linkedin", "notice_period", "location_preference"];
+  const payload = {};
+  for (const k of simple) {
+    const el = document.getElementById(`pf-${k}`);
+    if (el) payload[k] = el.value;
+  }
+  const expEl = document.getElementById("pf-experience_years");
+  if (expEl) payload.experience_years = parseInt(expEl.value) || 0;
+  const toList = id => {
+    const el = document.getElementById(id);
+    return el ? el.value.split(",").map(s => s.trim()).filter(Boolean) : [];
+  };
+  payload.target_roles = toList("pf-target_roles");
+  payload.target_companies = toList("pf-target_companies");
+  payload.skills = toList("pf-skills");
+  try {
+    const r = await fetch(`${_BROWSER_SVC}/profile`, {
+      method: "PATCH",
+      headers: {"Content-Type": "application/json"},
+      body: JSON.stringify(payload),
+    });
+    if (r.ok) { closeProfileModal(); }
+    else { alert("Failed to save profile — check browser-svc logs"); }
+  } catch (e) {
+    alert("browser-svc unreachable");
+  }
+}

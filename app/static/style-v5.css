@@ -207,6 +207,7 @@ body.thinking .reactor-core { box-shadow: var(--glow-cyan), inset 0 0 30px hsla(
 
 /* ── Browser Island ──────────────────────────────────────────────────── */
 .island-browser { width: 420px; height: 380px; }
+.island-board   { top: 80px; right: 16px; width: 740px; height: 510px; }
 .browser-urlbar {
   display: flex; gap: 4px; padding: 6px 8px;
   background: var(--bg-elevated); border-bottom: 1px solid var(--border);
