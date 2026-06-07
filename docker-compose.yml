@@ -28,11 +28,14 @@ services:
       - MAX_STORAGE_GB=10
       - GEMINI_API_KEY=${GEMINI_API_KEY:-}
       - BARK_SVC_URL=http://bark-svc:9001
+      - BROWSER_SVC_URL=http://browser-svc:9002
       # Optional: configure SMTP for CEO-to-user email
       # - SMTP_USER=your@gmail.com
       # - SMTP_PASS=your_app_password
     depends_on:
       bark-svc:
+        condition: service_started
+      browser-svc:
         condition: service_started
     restart: unless-stopped
 
@@ -46,3 +49,28 @@ services:
       timeout: 5s
       retries: 5
       start_period: 15s
+
+  browser-svc:
+    build: ./browser-svc
+    container_name: browser-svc
+    restart: unless-stopped
+    env_file: .env
+    ports:
+      - "9002:9002"
+    volumes:
+      - /mnt/HC_Volume_105874680/virtual-company/browser-svc/browser_profile.json:/app/browser_profile.json
+      - /mnt/HC_Volume_105874680/virtual-company/browser-svc/cv_exports:/app/cv_exports
+      # Place cv_default.pdf next to docker-compose.yml
+      - /mnt/HC_Volume_105874680/virtual-company/cv_default.pdf:/app/cv_default.pdf:ro
+    environment:
+      - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY}
+      - OVERLEAF_EMAIL=${OVERLEAF_EMAIL:-}
+      - OVERLEAF_PASSWORD=${OVERLEAF_PASSWORD:-}
+      - OVERLEAF_PROJECT_URL=${OVERLEAF_PROJECT_URL:-}
+      - NEXUS_WS_URL=ws://virtual-company:3030/ws/browser-relay
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://127.0.0.1:9002/health"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
