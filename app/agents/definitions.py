@@ -305,6 +305,8 @@ Always use this tool for any visual design or UI component request.""",
         "color":       "#00ff88",
         "avatar":      "MA",
         "description": "Job search, CV tailoring, and application automation via Playwright.",
+        "gemini_safe_tags": ["BROWSER_APPLY", "BROWSER_DISCOVER",
+                             "BROWSER_COMPANY", "BROWSER_PROFILE_MATCH"],
         "persona":     _worker_persona(
             "Maya",
             "Browser Automation Agent",
