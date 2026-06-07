@@ -2,7 +2,8 @@
 import re
 
 _DELEGATE_RE = re.compile(
-    r'\[DELEGATE:(\w+)\]\s*(.*?)(?=\[DELEGATE:|\[EMAIL_USER:|$)', re.DOTALL
+    r'^\[DELEGATE:(\w+)\]\s*(.*?)(?=^\[DELEGATE:|^\[EMAIL_USER:|\Z)',
+    re.DOTALL | re.MULTILINE
 )
 _EMAIL_RE = re.compile(
     r'\[EMAIL_USER:([^\]]+)\]\s*(.*?)(?=\[DELEGATE:|\[EMAIL_USER:|$)', re.DOTALL
