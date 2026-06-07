@@ -60,20 +60,29 @@ wired only into the rarely-used `run_tgpt_agent` fallback loop — not into the
     "are parsed from her final text response... and work identically regardless of
     backend." **That claim is the same false premise that produced the original bug**:
     `parse_tool_call`/`_execute_tool`/`call_browser_svc` are wired up only inside
-    `run_tgpt_agent`, not `run_gemini_agent`. If Fix 2 is implemented in isolation,
-    Maya would correctly *emit* `[BROWSER_APPLY:]` on Gemini — and the tags would
-    *still be inert*, identical to the symptom on Claude today. It would look fixed
-    (correct tags appear in her text) while doing nothing.
-  - **This spec's Section 1 supersedes Fix 2.** Once `BROWSER_*` tags are registered
-    as universal output-pipeline handlers (Section 1), they fire identically regardless
-    of which backend produced the text — including Gemini. Fix 2's actual goal (Maya
-    emitting real tags on Gemini instead of narrating in prose) becomes substantially
-    easier to achieve too, because the tags will visibly *do something* the moment
-    they appear, closing the loop that currently encourages narration over action.
-    Fix 2 should be marked superseded; its `gemini_safe_tags` persona-prompt idea may
-    still be worth keeping as a *complementary* nudge (it makes Maya more likely to
-    emit the tags on Gemini at all), but it is no longer the load-bearing fix — Section
-    1 is what makes the tags functional once emitted.
+    `run_tgpt_agent`, not `run_gemini_agent`.
+  - **⚠️ Fix 2 has already been implemented and merged** — commit `6d3c187`
+    ("fix(executor): stop Gemini prompt from blanket-banning Maya's tool tags",
+    2026-06-07 08:37) — and its commit message repeats the same false premise
+    near-verbatim: *"those are parsed from her final text response (not Claude's
+    live execution loop) and work the same on any backend."* The fix is real and
+    tested (Maya will now correctly *emit* `[BROWSER_APPLY:]`/`[BROWSER_DISCOVER:]`
+    on the Gemini backend instead of narrating in prose) — but the tags she emits
+    are **still inert** there, for the identical reason they're inert on Claude
+    today. The net effect: the dashboard will likely *still* not update, but the
+    symptom has shifted from "Maya narrates instead of tagging" (visibly wrong) to
+    "Maya tags correctly but nothing happens" (looks correct, silently does
+    nothing) — a harder-to-notice failure mode than the one it replaced.
+  - **This spec's Section 1 is what makes the already-merged Fix 2 actually work.**
+    Once `BROWSER_*` tags are registered as universal output-pipeline handlers
+    (Section 1), they fire identically regardless of which backend produced the
+    text — including Gemini — and Fix 2's emitted tags finally do something. Fix 2
+    itself needs no rollback or rework; it should simply be understood as
+    *necessary but not sufficient*, with Section 1 as the missing piece that
+    completes it. Recommend updating its commit's rationale/comment (or noting in
+    its tracking issue) so the "(not Claude's live execution loop) and work the
+    same on any backend" claim isn't read as settled fact by the next person who
+    touches this code.
 
 ## Section 1 — Universal tag dispatch via the output pipeline
 
