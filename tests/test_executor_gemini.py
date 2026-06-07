@@ -84,3 +84,21 @@ async def test_run_gemini_agent_falls_back_on_error():
             assert bs.get_current_backend() == "tgpt"
 
     bs.mark_claude_recovered()
+
+
+def test_gemini_prompt_carves_exception_for_agents_with_safe_tags():
+    """Maya's prompt must explicitly permit her [BROWSER_*] tags, not blanket-ban them."""
+    from app.agents.executor import _build_gemini_prompt
+    prompt = _build_gemini_prompt("browser", "find backend roles and apply")
+    assert "[BROWSER_APPLY:" in prompt
+    assert "[BROWSER_DISCOVER:" in prompt
+    assert "MUST use your role-specific action tags" in prompt
+    assert "Do NOT output [BASH:], [READ:], [WRITE:], [DELEGATE:]" in prompt
+
+def test_gemini_prompt_keeps_blanket_ban_for_agents_without_safe_tags():
+    """An agent with no gemini_safe_tags gets the original blanket instruction, unchanged."""
+    from app.agents.executor import _build_gemini_prompt
+    prompt = _build_gemini_prompt("ceo", "what's the status of the deploy")
+    assert "Do NOT output [BASH:], [READ:], [WRITE:]," in prompt
+    assert "or similar execution tool tags" in prompt
+    assert "MUST use your role-specific action tags" not in prompt

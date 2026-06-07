@@ -458,6 +458,24 @@ def _build_gemini_prompt(agent_id: str, user_msg: str) -> str:
     # (Gemini can't execute tools, so it just prints them as text)
     clean_persona = persona.split("AVAILABLE TOOLS:")[0] if "AVAILABLE TOOLS:" in persona else persona
 
+    safe_tags = agent.get("gemini_safe_tags", [])
+    if safe_tags:
+        tag_list = ", ".join(f"[{t}:...]" for t in safe_tags)
+        tool_note = (
+            "IMPORTANT: You are responding via Gemini API (limited tool access). "
+            "Do NOT output [BASH:], [READ:], [WRITE:], [DELEGATE:] tags — those "
+            "require Claude's code execution and won't work here. However, you "
+            f"MUST use your role-specific action tags ({tag_list}) exactly as "
+            "defined in your persona above whenever the task calls for them — "
+            "those ARE supported here and required to actually do the work."
+        )
+    else:
+        tool_note = (
+            "IMPORTANT: You are responding via Gemini API (limited tool access). "
+            "Answer conversationally and helpfully. Do NOT output [BASH:], [READ:], "
+            "[WRITE:], [DELEGATE:], or similar execution tool tags."
+        )
+
     hist_str = "\n".join(
         f"{'User' if h['role'] == 'user' else agent['name']}: {_truncate_content(h['content'])}"
         for h in history[-(config.MAX_HISTORY):]
@@ -466,9 +484,7 @@ def _build_gemini_prompt(agent_id: str, user_msg: str) -> str:
     live_ctx = _build_context_block(agent_id, user_msg)
     return (
         f"{clean_persona}\n\n"
-        f"IMPORTANT: You are responding via Gemini API (limited tool access). "
-        f"Answer conversationally and helpfully. Do NOT output [BASH:], [READ:], [WRITE:], "
-        f"[DELEGATE:], or similar execution tool tags.\n"
+        f"{tool_note}\n"
         f"MANDATORY — you MUST use these tags in EVERY response:\n"
         f"  [SPEAK: your full reply | emotion: calm|excited|sad|whisper|energetic]  — REQUIRED for ALL responses\n"
         f"    Match emotion to context. Example: [SPEAK: That's done! | emotion: excited]\n"
