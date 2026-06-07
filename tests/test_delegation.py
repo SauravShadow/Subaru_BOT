@@ -1,5 +1,5 @@
 """Tests for CEO delegation-tag parsing — directives vs. inline mentions."""
-from app.services.delegation import parse_delegations
+from app.services.delegation import parse_delegations, clean_delegations
 
 
 def test_real_directive_at_line_start_parses():
@@ -34,3 +34,29 @@ def test_directive_followed_by_trailing_prose_stops_at_next_tag():
     )
     result = parse_delegations(text)
     assert result == [("browser", "Search for Stripe roles and apply.")]
+
+
+def test_clean_delegations_strips_real_directive_entirely():
+    text = (
+        "Sure thing.\n"
+        "[DELEGATE:browser] Find backend roles and apply.\n"
+        "I will let you know."
+    )
+    assert clean_delegations(text) == "Sure thing."
+
+
+def test_clean_delegations_strips_stray_mid_sentence_tag_only():
+    text = "Say the word and I will get [DELEGATE:browser] Maya moving on it right away."
+    assert clean_delegations(text) == "Say the word and I will get Maya moving on it right away."
+
+
+def test_clean_delegations_handles_real_directive_and_stray_mention_together():
+    text = (
+        "Say the word and I will get [DELEGATE:browser] Maya moving on it right away.\n"
+        "[DELEGATE:backend] Build a REST endpoint for user search.\n"
+        "Thanks!"
+    )
+    result = clean_delegations(text)
+    assert "[DELEGATE:" not in result
+    assert "Say the word and I will get Maya moving on it right away." in result
+    assert "Build a REST endpoint" not in result

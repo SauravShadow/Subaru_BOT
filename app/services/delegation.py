@@ -5,6 +5,7 @@ _DELEGATE_RE = re.compile(
     r'^\[DELEGATE:(\w+)\]\s*(.*?)(?=^\[DELEGATE:|^\[EMAIL_USER:|\Z)',
     re.DOTALL | re.MULTILINE
 )
+_STRAY_DELEGATE_TAG_RE = re.compile(r'\[DELEGATE:\w+\]')
 _EMAIL_RE = re.compile(
     r'\[EMAIL_USER:([^\]]+)\]\s*(.*?)(?=\[DELEGATE:|\[EMAIL_USER:|$)', re.DOTALL
 )
@@ -42,7 +43,9 @@ def parse_emails(text: str) -> list[tuple]:
 
 def clean_delegations(text: str) -> str:
     """Strip DELEGATE tags only — EMAIL_USER is handled by OutputPipeline."""
-    return _DELEGATE_RE.sub("", text).strip()
+    cleaned = _DELEGATE_RE.sub("", text)
+    cleaned = _STRAY_DELEGATE_TAG_RE.sub("", cleaned)
+    return re.sub(r' {2,}', ' ', cleaned).strip()
 
 
 def clean_response(text: str) -> str:
