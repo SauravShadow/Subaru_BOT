@@ -29,7 +29,7 @@ app = FastAPI(title="browser-svc", lifespan=lifespan)
 
 @app.get("/health")
 def health():
-    return {"status": "ok", "slots": 5}
+    return {"status": "ok", "slots": 4}
 
 
 @app.get("/slots")

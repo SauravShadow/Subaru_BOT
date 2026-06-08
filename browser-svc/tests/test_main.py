@@ -51,14 +51,14 @@ def client(tmp_path):
 def test_health(client):
     r = client.get("/health")
     assert r.status_code == 200
-    assert r.json() == {"status": "ok", "slots": 5}
+    assert r.json() == {"status": "ok", "slots": 4}
 
 
 def test_get_slots(client):
     r = client.get("/slots")
     assert r.status_code == 200
     slots = r.json()
-    assert len(slots) == 5
+    assert len(slots) == 4
     assert all(s["state"] == "idle" for s in slots)
 
 
