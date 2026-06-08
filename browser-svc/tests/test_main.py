@@ -89,13 +89,13 @@ def test_patch_profile(client):
     assert data["name"] == "Test User"
 
 
-def test_apply_invalid_slot_zero(client):
-    r = client.post("/apply", json={"url": "https://linkedin.com/jobs/123", "slot_id": 0})
+def test_apply_invalid_slot_negative(client):
+    r = client.post("/apply", json={"url": "https://linkedin.com/jobs/123", "slot_id": -1})
     assert r.status_code == 400
 
 
-def test_apply_invalid_slot_five(client):
-    r = client.post("/apply", json={"url": "https://linkedin.com/jobs/123", "slot_id": 5})
+def test_apply_invalid_slot_four(client):
+    r = client.post("/apply", json={"url": "https://linkedin.com/jobs/123", "slot_id": 4})
     assert r.status_code == 400
 
 
@@ -105,6 +105,22 @@ def test_apply_queues_job(client):
     data = r.json()
     assert data["queued"] is True
     assert data["slot_id"] == 1
+
+
+def test_apply_without_slot_id_picks_free_slot(client):
+    r = client.post("/apply", json={"url": "https://linkedin.com/jobs/123"})
+    assert r.status_code == 200
+    data = r.json()
+    assert data["queued"] is True
+    assert data["slot_id"] == 0
+
+
+def test_apply_returns_409_when_no_free_slot(client):
+    import main as m
+    with patch.object(m.session_manager, "find_free_slot", return_value=None):
+        r = client.post("/apply", json={"url": "https://linkedin.com/jobs/123"})
+    assert r.status_code == 409
+    assert r.json()["detail"] == "No free slot available"
 
 
 def test_discover_queues_job(client):

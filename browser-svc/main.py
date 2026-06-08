@@ -75,6 +75,19 @@ def _slot_is_busy(slot_id: int) -> bool:
     return session_manager.status()[slot_id]["state"] == SlotState.BUSY
 
 
+def _resolve_slot(slot_id: int | None) -> int:
+    if slot_id is not None:
+        if slot_id < 0 or slot_id >= session_manager.NUM_SLOTS:
+            raise HTTPException(400, f"slot_id must be 0–{session_manager.NUM_SLOTS - 1}")
+        if _slot_is_busy(slot_id):
+            raise HTTPException(409, f"Slot {slot_id} is busy")
+        return slot_id
+    free = session_manager.find_free_slot()
+    if free is None:
+        raise HTTPException(409, "No free slot available")
+    return free
+
+
 async def _apply_on_slot(slot: SlotInfo, url: str, tailor_cv: bool):
     """Apply to a job URL using an already-acquired slot (caller handles acquire/release)."""
     from job_workflow import apply_to_job
@@ -110,39 +123,35 @@ async def _run_apply(url: str, slot_id: int, tailor_cv: bool):
 
 class ApplyRequest(BaseModel):
     url: str
-    slot_id: int = 1
+    slot_id: int | None = None
     tailor_cv: bool = True
 
 
 @app.post("/apply")
 async def apply_endpoint(req: ApplyRequest, bg: BackgroundTasks):
-    if req.slot_id < 1 or req.slot_id > 4:
-        raise HTTPException(400, "slot_id must be 1–4")
-    if _slot_is_busy(req.slot_id):
-        raise HTTPException(409, f"Slot {req.slot_id} is busy")
-    bg.add_task(_run_apply, req.url, req.slot_id, req.tailor_cv)
-    return {"queued": True, "slot_id": req.slot_id, "url": req.url}
+    slot_id = _resolve_slot(req.slot_id)
+    bg.add_task(_run_apply, req.url, slot_id, req.tailor_cv)
+    return {"queued": True, "slot_id": slot_id, "url": req.url}
 
 
 class DiscoverRequest(BaseModel):
     keywords: str
     platform: str = "linkedin"
     location: str = "Bangalore"
-    slot_id: int = 1
+    slot_id: int | None = None
     tailor_cv: bool = True
 
 
 @app.post("/discover")
 async def discover_endpoint(req: DiscoverRequest, bg: BackgroundTasks):
-    if _slot_is_busy(req.slot_id):
-        raise HTTPException(409, f"Slot {req.slot_id} is busy")
+    slot_id = _resolve_slot(req.slot_id)
 
     async def run():
         from job_workflow import discover_jobs_linkedin, discover_jobs_indeed, discover_jobs_naukri
-        slot = await session_manager.acquire(req.slot_id)
+        slot = await session_manager.acquire(slot_id)
         screencast_started = False
         try:
-            await session_manager.start_screencast(req.slot_id, relay)
+            await session_manager.start_screencast(slot_id, relay)
             screencast_started = True
             if req.platform == "indeed":
                 urls = await discover_jobs_indeed(slot.page, req.keywords, req.location)
@@ -157,10 +166,10 @@ async def discover_endpoint(req: DiscoverRequest, bg: BackgroundTasks):
         finally:
             if screencast_started:
                 try:
-                    await session_manager.stop_screencast(req.slot_id)
+                    await session_manager.stop_screencast(slot_id)
                 except Exception:
                     pass
-            await session_manager.release(req.slot_id)
+            await session_manager.release(slot_id)
 
     bg.add_task(run)
     return {"queued": True, "platform": req.platform, "keywords": req.keywords}
@@ -168,21 +177,20 @@ async def discover_endpoint(req: DiscoverRequest, bg: BackgroundTasks):
 
 class CompanyRequest(BaseModel):
     company: str
-    slot_id: int = 1
+    slot_id: int | None = None
     tailor_cv: bool = True
 
 
 @app.post("/company-apply")
 async def company_apply_endpoint(req: CompanyRequest, bg: BackgroundTasks):
-    if _slot_is_busy(req.slot_id):
-        raise HTTPException(409, f"Slot {req.slot_id} is busy")
+    slot_id = _resolve_slot(req.slot_id)
 
     async def run():
         from job_workflow import discover_company_roles, load_profile
-        slot = await session_manager.acquire(req.slot_id)
+        slot = await session_manager.acquire(slot_id)
         screencast_started = False
         try:
-            await session_manager.start_screencast(req.slot_id, relay)
+            await session_manager.start_screencast(slot_id, relay)
             screencast_started = True
             profile = load_profile()
             urls = await discover_company_roles(
@@ -195,34 +203,33 @@ async def company_apply_endpoint(req: CompanyRequest, bg: BackgroundTasks):
         finally:
             if screencast_started:
                 try:
-                    await session_manager.stop_screencast(req.slot_id)
+                    await session_manager.stop_screencast(slot_id)
                 except Exception:
                     pass
-            await session_manager.release(req.slot_id)
+            await session_manager.release(slot_id)
 
     bg.add_task(run)
     return {"queued": True, "company": req.company}
 
 
 class ProfileMatchRequest(BaseModel):
-    slot_id: int = 1
+    slot_id: int | None = None
     tailor_cv: bool = True
 
 
 @app.post("/profile-match")
 async def profile_match_endpoint(req: ProfileMatchRequest, bg: BackgroundTasks):
-    if _slot_is_busy(req.slot_id):
-        raise HTTPException(409, f"Slot {req.slot_id} is busy")
+    slot_id = _resolve_slot(req.slot_id)
 
     async def run():
         from job_workflow import discover_company_roles, load_profile
         profile = load_profile()
         companies = profile.get("target_companies", [])
         roles = profile.get("target_roles", [])
-        slot = await session_manager.acquire(req.slot_id)
+        slot = await session_manager.acquire(slot_id)
         screencast_started = False
         try:
-            await session_manager.start_screencast(req.slot_id, relay)
+            await session_manager.start_screencast(slot_id, relay)
             screencast_started = True
             for company in companies:
                 urls = await discover_company_roles(slot.page, company, roles)
@@ -233,10 +240,10 @@ async def profile_match_endpoint(req: ProfileMatchRequest, bg: BackgroundTasks):
         finally:
             if screencast_started:
                 try:
-                    await session_manager.stop_screencast(req.slot_id)
+                    await session_manager.stop_screencast(slot_id)
                 except Exception:
                     pass
-            await session_manager.release(req.slot_id)
+            await session_manager.release(slot_id)
 
     bg.add_task(run)
     return {"queued": True, "mode": "profile_match"}
