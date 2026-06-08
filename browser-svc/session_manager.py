@@ -24,7 +24,7 @@ class SlotInfo:
 
 
 class SessionManager:
-    NUM_SLOTS = 5
+    NUM_SLOTS = 4
 
     def __init__(self):
         self._slots: list[SlotInfo] = [SlotInfo(i) for i in range(self.NUM_SLOTS)]

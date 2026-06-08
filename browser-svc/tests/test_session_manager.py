@@ -18,7 +18,7 @@ def sm():
 
 @pytest.mark.asyncio
 async def test_initial_state_all_idle(sm):
-    assert len(sm._slots) == 5
+    assert len(sm._slots) == 4
     assert all(s.state == SlotState.IDLE for s in sm._slots)
 
 
@@ -55,14 +55,14 @@ async def test_find_free_slot_skips_busy(sm):
 
 @pytest.mark.asyncio
 async def test_find_free_slot_returns_none_when_all_busy(sm):
-    for i in range(5):
+    for i in range(4):
         await sm.acquire(i)
     assert sm.find_free_slot() is None
 
 
 @pytest.mark.asyncio
-async def test_status_returns_five_dicts(sm):
+async def test_status_returns_four_dicts(sm):
     statuses = sm.status()
-    assert len(statuses) == 5
+    assert len(statuses) == 4
     for s in statuses:
         assert "slot_id" in s and "state" in s and "url" in s and "action" in s
