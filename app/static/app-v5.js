@@ -1079,24 +1079,119 @@ document.addEventListener("DOMContentLoaded", () => {
 const _SLOT_LABELS = ["Overleaf (CV)", "Slot 1", "Slot 2", "Slot 3", "Slot 4"];
 const _boardTiles = {};
 
+function selectBoardSlot(slotId) {
+  const select = document.getElementById("board-slot-select");
+  if (select) select.value = slotId;
+  
+  // Highlight the selected tile
+  for (let i = 0; i < 5; i++) {
+    const tile = document.getElementById(`bframe-${i}`)?.parentElement;
+    if (tile) {
+      if (i === slotId) {
+        tile.style.border = "2px solid #00ff88";
+        tile.style.boxShadow = "0 0 10px rgba(0, 255, 136, 0.3)";
+      } else {
+        tile.style.border = "1px solid var(--border)";
+        tile.style.boxShadow = "none";
+      }
+    }
+  }
+}
+
+function getSelectedBoardSlot() {
+  const select = document.getElementById("board-slot-select");
+  return select ? parseInt(select.value) : 1;
+}
+
+async function boardNavigate() {
+  const slotId = getSelectedBoardSlot();
+  const input = document.getElementById("board-url-input");
+  const url = input ? input.value.trim() : "";
+  if (!url) return;
+  
+  await fetch(`/api/browser-svc/slots/${slotId}/navigate`, {
+    method: "POST",
+    headers: {"Content-Type": "application/json"},
+    body: JSON.stringify({ url }),
+  });
+}
+
+async function boardBack() {
+  const slotId = getSelectedBoardSlot();
+  await fetch(`/api/browser-svc/slots/${slotId}/back`, {
+    method: "POST",
+  });
+}
+
+async function boardReload() {
+  const slotId = getSelectedBoardSlot();
+  await fetch(`/api/browser-svc/slots/${slotId}/reload`, {
+    method: "POST",
+  });
+}
+
+async function boardType() {
+  const slotId = getSelectedBoardSlot();
+  const input = document.getElementById("board-type-input");
+  const text = input ? input.value : "";
+  if (!text) return;
+  
+  await fetch(`/api/browser-svc/slots/${slotId}/type`, {
+    method: "POST",
+    headers: {"Content-Type": "application/json"},
+    body: JSON.stringify({ text }),
+  });
+  if (input) input.value = "";
+}
+
+async function boardPressEnter() {
+  const slotId = getSelectedBoardSlot();
+  await fetch(`/api/browser-svc/slots/${slotId}/key`, {
+    method: "POST",
+    headers: {"Content-Type": "application/json"},
+    body: JSON.stringify({ key: "Enter" }),
+  });
+}
+
 function initBrowserBoard() {
   const grid = document.getElementById("browser-board-grid");
   if (!grid || Object.keys(_boardTiles).length > 0) return;
   grid.style.cssText =
-    "display:grid;grid-template-columns:repeat(3,1fr);gap:6px;padding:8px;height:calc(100% - 36px);box-sizing:border-box";
+    "display:grid;grid-template-columns:repeat(3,1fr);gap:6px;padding:8px;height:calc(100% - 72px);box-sizing:border-box";
 
   for (let i = 0; i < 5; i++) {
     const tile = document.createElement("div");
     tile.style.cssText =
-      "position:relative;background:#0d1117;border:1px solid var(--border);border-radius:6px;overflow:hidden";
+      "position:relative;background:#0d1117;border:1px solid var(--border);border-radius:6px;overflow:hidden;cursor:pointer";
     tile.innerHTML =
-      `<img id="bframe-${i}" src="" style="width:100%;height:100%;object-fit:cover;display:none">` +
+      `<img id="bframe-${i}" src="" style="width:100%;height:100%;object-fit:fill;display:none">` +
       `<div id="bidle-${i}" style="position:absolute;inset:0;display:flex;align-items:center;justify-content:center;flex-direction:column;gap:4px">` +
         `<span style="color:var(--muted);font-size:11px">${_SLOT_LABELS[i]}</span>` +
         `<span style="color:var(--border);font-size:9px">idle</span>` +
       `</div>` +
       `<div id="bstatus-${i}" style="position:absolute;bottom:0;left:0;right:0;padding:3px 6px;background:rgba(0,0,0,0.75);font-size:9px;color:#00d4ff;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;display:none"></div>` +
       `<div id="bbadge-${i}" style="position:absolute;top:4px;right:4px;padding:1px 5px;border-radius:3px;font-size:8px;font-weight:700;background:rgba(0,255,128,0.15);color:#0f0;display:none">LIVE</div>`;
+    
+    tile.addEventListener("click", e => {
+      selectBoardSlot(i);
+      const img = document.getElementById(`bframe-${i}`);
+      if (img && img.style.display !== "none" && e.target === img) {
+        const rect = img.getBoundingClientRect();
+        const clickX = e.clientX - rect.left;
+        const clickY = e.clientY - rect.top;
+        const pctX = clickX / rect.width;
+        const pctY = clickY / rect.height;
+        const x = Math.round(pctX * 1280);
+        const y = Math.round(pctY * 900);
+        
+        fetch(`/api/browser-svc/slots/${i}/click`, {
+          method: "POST",
+          headers: {"Content-Type": "application/json"},
+          body: JSON.stringify({ x, y }),
+        });
+      }
+    });
+
     grid.appendChild(tile);
     _boardTiles[i] = {
       img: document.getElementById(`bframe-${i}`),
@@ -1104,6 +1199,16 @@ function initBrowserBoard() {
       status: document.getElementById(`bstatus-${i}`),
       badge: document.getElementById(`bbadge-${i}`),
     };
+  }
+
+  // Setup inputs Enter listeners
+  const boardUrlInput = document.getElementById("board-url-input");
+  if (boardUrlInput) {
+    boardUrlInput.addEventListener("keydown", e => { if (e.key === "Enter") boardNavigate(); });
+  }
+  const boardTypeInput = document.getElementById("board-type-input");
+  if (boardTypeInput) {
+    boardTypeInput.addEventListener("keydown", e => { if (e.key === "Enter") boardType(); });
   }
 
   // Log tile
@@ -1114,6 +1219,9 @@ function initBrowserBoard() {
     `<div style="font-size:10px;color:#00ff88;margin-bottom:4px;font-weight:600">Apply Log</div>` +
     `<div id="board-log" style="font-size:9px;color:var(--muted);display:flex;flex-direction:column;gap:3px"></div>`;
   grid.appendChild(logTile);
+
+  // Default select Slot 1
+  setTimeout(() => selectBoardSlot(1), 100);
 }
 
 function handleBrowserFrame(obj) {
@@ -1150,13 +1258,14 @@ function logApplyResult(obj) {
 
 // ── Profile Modal ─────────────────────────────────────────────────────────────
 let _profileData = {};
-const _BROWSER_SVC = "http://127.0.0.1:9002";
+const _BROWSER_SVC = "/api/browser-svc";
 
 async function toggleProfileModal() {
   const modal = document.getElementById("profile-modal");
   if (modal.style.display !== "none") { closeProfileModal(); return; }
   try {
     const r = await fetch(`${_BROWSER_SVC}/profile`);
+    if (!r.ok) throw new Error(`HTTP ${r.status}`);
     _profileData = await r.json();
     renderProfileForm(_profileData);
     modal.style.display = "flex";

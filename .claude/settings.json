@@ -1,6 +1,4 @@
 {
-  "autoCompactEnabled": true,
-  "autoCompactWindow": 120000,
   "permissions": {
     "allow": [
       "Bash(docker exec virtual-company *)",

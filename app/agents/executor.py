@@ -463,7 +463,7 @@ def _build_gemini_prompt(agent_id: str, user_msg: str) -> str:
         tag_list = ", ".join(f"[{t}:...]" for t in safe_tags)
         tool_note = (
             "IMPORTANT: You are responding via Gemini API (limited tool access). "
-            "Do NOT output [BASH:], [READ:], [WRITE:], [DELEGATE:] tags — those "
+            "Do NOT output [BASH:], [READ:], [WRITE:] tags — those "
             "require Claude's code execution and won't work here. However, you "
             f"MUST use your role-specific action tags ({tag_list}) exactly as "
             "defined in your persona above whenever the task calls for them — "
@@ -473,7 +473,19 @@ def _build_gemini_prompt(agent_id: str, user_msg: str) -> str:
         tool_note = (
             "IMPORTANT: You are responding via Gemini API (limited tool access). "
             "Answer conversationally and helpfully. Do NOT output [BASH:], [READ:], "
-            "[WRITE:], [DELEGATE:], or similar execution tool tags."
+            "[WRITE:], or similar code-execution tool tags."
+        )
+
+    if agent_id == "ceo":
+        tool_note += (
+            "\n[DELEGATE:role] is DIFFERENT — it is plain text parsed by the "
+            "delegation system after you respond, not a Claude tool-execution "
+            "tag, so it WORKS here exactly like it does on Claude. When you "
+            "decide to hand work to the team, you MUST actually output "
+            "[DELEGATE:role] as the first thing on its own line, per your "
+            "persona instructions above — narrating that you're 'looping in' "
+            "or 'sending Maya over' without emitting the tag means nothing "
+            "happens and the team member is never invoked."
         )
 
     hist_str = "\n".join(

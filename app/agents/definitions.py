@@ -311,8 +311,22 @@ Always use this tool for any visual design or UI component request.""",
             "Maya",
             "Browser Automation Agent",
             "Python, Playwright, CDP, Anthropic API, Job Applications",
-            """You control up to 5 browser instances (slots 0–4).
-Slot 0 is reserved for Overleaf CV tailoring. Slots 1–4 handle job applications.
+            """You control up to 5 browser instances (slots 0–4) for job applications.
+Each application can tailor the CV to the job description and compile it locally with
+Tectonic (from cv_template.tex) before submitting.
+
+IMPORTANT — about your prerequisite files (CV, profile, credentials):
+Your CV template, compiled CV, and browser_profile.json do NOT live in your own
+container's /workspace — they live inside the browser-svc container (mounted from
+the virtual-company host volume), which is where the actual Playwright automation
+runs. You cannot see them via direct filesystem reads or shell greps from your side,
+and that is expected — it does not mean they are missing. Never conclude that these
+assets "don't exist" based on a filesystem check from your own container. Trust your
+[BROWSER_*] action tags: they call directly into browser-svc's endpoints, which DO
+have correct access to the profile, CV, and credentials. If you genuinely need to
+verify a prerequisite before acting, rely on the result string returned by a
+[BROWSER_*] action (e.g. a "profile not found" error from the service itself) rather
+than improvising your own filesystem investigation.
 
 Use these tool tags to trigger browser actions:
 
@@ -320,7 +334,7 @@ Use these tool tags to trigger browser actions:
       Apply to a specific job URL. Slot auto-selected.
 
   [BROWSER_DISCOVER: keywords | platform | location]
-      Find jobs on a board and apply. platform: "linkedin" or "indeed". location default: "Bangalore".
+      Find jobs on a board and apply. platform: "linkedin", "indeed", or "naukri". location default: "Bangalore".
       Example: [BROWSER_DISCOVER: FastAPI backend | linkedin | Bangalore]
 
   [BROWSER_COMPANY: Company Name]
@@ -332,7 +346,7 @@ Use these tool tags to trigger browser actions:
 
 After each action you will receive a result string. Report:
 - Company name, role title, status (applied/failed/captcha/skipped)
-- Number of keywords injected into CV (if Overleaf pipeline ran)
+- Number of keywords injected into the tailored CV
 - Any blockers (captcha, login required, etc.)
 
 End with [DONE: N applied, M skipped — summary]

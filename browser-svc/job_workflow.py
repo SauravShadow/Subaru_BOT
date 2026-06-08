@@ -1,6 +1,7 @@
 import asyncio
 import json
 import logging
+import os
 import re
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -231,7 +232,7 @@ async def apply_to_job(
     url: str,
     cv_path: str,
     slot_info: Optional["SlotInfo"] = None,
-    overleaf_page: Optional["Page"] = None,
+    tailor_cv: bool = False,
 ) -> ApplyResult:
     try:
         profile = load_profile()
@@ -249,11 +250,9 @@ async def apply_to_job(
             role = await page.title() or "Role"
         except Exception:
             role = "Role"
-        if overleaf_page is not None:
-            if slot_info:
-                slot_info.action = "Tailoring CV via Overleaf"
-            from overleaf_pipeline import tailor_and_export
-            cv_path = str(await tailor_and_export(overleaf_page, jd, company, role))
+        if tailor_cv:
+            from cv_compiler import tailor_and_compile
+            cv_path = str(await tailor_and_compile(jd, company, role, slot_info=slot_info))
         if slot_info:
             slot_info.action = f"Applying to {company}"
         ok = await _apply_linkedin_easy(page, profile, cv_path)
@@ -305,6 +304,60 @@ async def discover_jobs_indeed(
             if not href.startswith("http"):
                 href = "https://in.indeed.com" + href
             urls.append(href)
+    return list(dict.fromkeys(urls))
+
+
+async def _login_naukri(page: "Page") -> bool:
+    """Log into Naukri using NAUKRI_EMAIL / NAUKRI_PASSWORD env vars, if set.
+
+    Returns True if a login was attempted and appears to have succeeded, False if
+    no credentials are configured or the login could not be confirmed. Discovery
+    can proceed without login (listings are public), but applying to a job on
+    Naukri requires an authenticated session.
+    """
+    from stealth import human_delay
+
+    email = os.environ.get("NAUKRI_EMAIL")
+    password = os.environ.get("NAUKRI_PASSWORD")
+    if not email or not password:
+        logger.info("NAUKRI_EMAIL/NAUKRI_PASSWORD not set — skipping Naukri login")
+        return False
+    try:
+        already = page.locator("a[title='My Naukri'], a:has-text('My Naukri')")
+        if await already.is_visible(timeout=2000):
+            return True
+    except Exception:
+        pass
+    try:
+        await page.goto("https://www.naukri.com/nlogin/login", wait_until="domcontentloaded", timeout=30000)
+        await page.fill("#usernameField", email)
+        await page.fill("#passwordField", password)
+        await human_delay(300, 700)
+        await page.click("button[type='submit']")
+        await human_delay(2000, 3000)
+        logged_in = page.locator("a[title='My Naukri'], a:has-text('My Naukri')")
+        return await logged_in.is_visible(timeout=5000)
+    except Exception as exc:
+        logger.warning("Naukri login failed: %s", exc)
+        return False
+
+
+async def discover_jobs_naukri(
+    page: "Page", keywords: str, location: str = "Bangalore"
+) -> list[str]:
+    from stealth import scroll_to_read
+    await _login_naukri(page)
+    query = keywords.strip().lower().replace(" ", "-")
+    loc = location.strip().lower().replace(" ", "-")
+    url = f"https://www.naukri.com/{query}-jobs-in-{loc}"
+    await page.goto(url, wait_until="domcontentloaded", timeout=30000)
+    await scroll_to_read(page)
+    links = await page.locator("a.title, a.title.ellipsis").all()
+    urls = []
+    for link in links[:10]:
+        href = await link.get_attribute("href")
+        if href and href.startswith("http"):
+            urls.append(href.split("?")[0])
     return list(dict.fromkeys(urls))
 
 

@@ -34,20 +34,18 @@ def test_apply_edits_multiple():
 
 
 @pytest.mark.asyncio
-async def test_enhance_cv_calls_anthropic_and_parses():
+async def test_enhance_cv_calls_gemini_and_parses():
     mock_response = MagicMock()
-    mock_response.content = [
-        MagicMock(
-            text='{"edits": [{"old": "Django", "new": "FastAPI"}], "keywords": ["FastAPI", "async"]}'
-        )
-    ]
+    mock_response.text = (
+        '{"edits": [{"old": "Django", "new": "FastAPI"}], "keywords": ["FastAPI", "async"]}'
+    )
 
-    with patch("cv_enhancer.anthropic.AsyncAnthropic") as mock_cls:
-        mock_client = AsyncMock()
+    with patch("cv_enhancer.genai.Client") as mock_cls:
+        mock_client = MagicMock()
         mock_cls.return_value = mock_client
-        mock_client.messages.create = AsyncMock(return_value=mock_response)
+        mock_client.models.generate_content = MagicMock(return_value=mock_response)
 
-        with patch.dict("os.environ", {"ANTHROPIC_API_KEY": "test-key"}):
+        with patch.dict("os.environ", {"GEMINI_API_KEY": "test-key"}):
             from cv_enhancer import enhance_cv
             result = await enhance_cv("FastAPI JD", SAMPLE_LATEX)
 
@@ -59,18 +57,14 @@ async def test_enhance_cv_calls_anthropic_and_parses():
 @pytest.mark.asyncio
 async def test_enhance_cv_strips_markdown_fences():
     mock_response = MagicMock()
-    mock_response.content = [
-        MagicMock(
-            text='```json\n{"edits": [], "keywords": ["k1"]}\n```'
-        )
-    ]
+    mock_response.text = '```json\n{"edits": [], "keywords": ["k1"]}\n```'
 
-    with patch("cv_enhancer.anthropic.AsyncAnthropic") as mock_cls:
-        mock_client = AsyncMock()
+    with patch("cv_enhancer.genai.Client") as mock_cls:
+        mock_client = MagicMock()
         mock_cls.return_value = mock_client
-        mock_client.messages.create = AsyncMock(return_value=mock_response)
+        mock_client.models.generate_content = MagicMock(return_value=mock_response)
 
-        with patch.dict("os.environ", {"ANTHROPIC_API_KEY": "test-key"}):
+        with patch.dict("os.environ", {"GEMINI_API_KEY": "test-key"}):
             from cv_enhancer import enhance_cv
             result = await enhance_cv("JD", SAMPLE_LATEX)
 

@@ -466,6 +466,35 @@ async def api_browser_click(body: dict):
     return {"ok": True, **result}
 
 
+# ── Wildcard Browser-svc Proxy ────────────────────────────────────────────────
+# Dynamically proxy all requests under /api/browser-svc/* to the browser-svc.
+
+@router.api_route("/api/browser-svc/{path:path}", methods=["GET", "POST", "PUT", "PATCH", "DELETE"])
+async def api_browser_svc_proxy(path: str, request: Request):
+    import httpx
+    from fastapi.responses import Response
+    method = request.method
+    headers = {k: v for k, v in request.headers.items() if k.lower() not in ("host", "authorization")}
+    content = await request.body()
+    try:
+        async with httpx.AsyncClient(timeout=15.0) as client:
+            r = await client.request(
+                method,
+                f"{config.BROWSER_SVC_URL}/{path}",
+                headers=headers,
+                content=content,
+                params=request.query_params,
+            )
+            try:
+                data = r.json()
+                return JSONResponse(data, status_code=r.status_code)
+            except Exception:
+                return Response(content=r.content, status_code=r.status_code, media_type=r.headers.get("content-type"))
+    except Exception as exc:
+        return JSONResponse({"ok": False, "error": f"browser-svc unreachable: {exc}"}, status_code=502)
+
+
+
 # ── Conversation compact ───────────────────────────────────────────────────────
 
 @router.post("/api/compact")

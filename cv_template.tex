@@ -1,0 +1,96 @@
+\documentclass[10pt,a4paper,sans]{moderncv}
+
+\moderncvstyle{banking}
+\moderncvcolor{blue}
+
+\usepackage[utf8]{inputenc}
+\usepackage[scale=0.90]{geometry}
+\usepackage{hyperref}
+
+% Personal data
+\firstname{Saurav}
+\familyname{Kumar}
+\address{Bangalore, India}{}{}
+\phone[mobile]{+91 7488864354}
+\email{sauravkr031@gmail.com}
+
+\social[linkedin]{saurav-kumar-2032bb213}
+\social[github]{SauravShadow}
+
+\extrainfo{
+\href{https://www.saurav-info.xyz/}{Portfolio}
+\enspace\textbullet\enspace
+\href{https://leetcode.com/SauravSubaru}{LeetCode}
+}
+
+\begin{document}
+
+\makecvtitle
+
+%----------------------SUMMARY----------------------
+\section{Summary}
+Software Engineer with 3 years of experience building \textbf{high-performance backend systems in C++}. Strong in \textbf{DSA, multithreading, concurrency, and performance optimization}. Experienced in \textbf{Linux, system design, low-latency processing}, and scalable architectures. Passionate about building efficient and reliable systems.
+
+%----------------------PROJECTS----------------------
+\section{Projects}
+
+\cventry{}{High-Performance Video Streaming Server (C++ Systems Project)}{}{}{}{
+\begin{itemize}
+\item Designed a \textbf{modular HTTP video streaming server} in C++ with \textbf{concurrent request handling} using a custom thread pool.
+\item Implemented \textbf{zero-copy streaming} using \texttt{sendfile()}, reducing CPU overhead and improving throughput.
+\item Built \textbf{HTTP parsing, routing, and Range requests (206 Partial Content)} for efficient video seeking.
+\item Developed \textbf{filesystem-driven content browsing} (anime $\rightarrow$ seasons $\rightarrow$ episodes) with dynamic directory APIs.
+\item Containerized and deployed the service with public access via secure tunneling.
+\item \textbf{Live:} \href{https://stream.saurav-info.xyz}{stream.saurav-info.xyz}
+\end{itemize}
+}
+
+\cventry{}{Multi-Threading Task Scheduler (C++ Concurrency Engine)}{}{}{}{
+\begin{itemize}
+\item Built a \textbf{high-performance task scheduler} with a \textbf{runtime-resizable thread pool}.
+\item Designed \textbf{REST APIs} and real-time updates via \textbf{Server-Sent Events (SSE)}.
+\item Simulated CPU-bound workloads to validate \textbf{thread efficiency and scheduling}.
+\item \textbf{Live:} \href{https://task.saurav-info.xyz/}{task.saurav-info.xyz} 
+\end{itemize}
+}
+
+%----------------------EXPERIENCE----------------------
+\section{Experience}
+
+\cventry{Oct 2023 -- Present}{Software Engineer}{Keysight Technologies}{Bangalore, India}{}{
+\begin{itemize}
+\item Developed and optimized features for a \textbf{desktop-based simulation platform} (with web integration), focusing on \textbf{high-performance C++ modules} for real-time data processing.
+\item Improved performance of critical components by \textbf{15\%}, leveraging profiling tools and memory optimizations for low-latency execution.
+\item Built \textbf{multithreaded systems} to handle concurrent simulation workloads, enhancing responsiveness and throughput under heavy usage.
+\item Contributed to \textbf{low-level system design (LLD)} and modular architecture, improving maintainability and scalability of the simulation engine.
+\item Refactored legacy components into \textbf{clean, modular designs}, reducing technical debt and simplifying future feature development.
+\item Integrated and maintained \textbf{CI/CD pipelines} using Docker and Jenkins for streamlined build and deployment workflows.
+\end{itemize}
+}
+
+\cventry{Jan 2023 -- Jun 2023}{Industry Project (AON)}{Indian Institute of Science (IISc)}{Bangalore, India}{}{
+\begin{itemize}
+\item Processed and analyzed \textbf{large structured datasets} for risk modeling.
+\item Built data pipelines improving \textbf{data quality and consistency}.
+\end{itemize}
+}
+
+%----------------------SKILLS----------------------
+\section{Skills}
+
+\cvitem{Languages}{C++, Python}
+\cvitem{Core}{DSA, Multithreading, Concurrency, OOP, Memory Management}
+\cvitem{Systems}{System Design, Low-latency Systems, \textbf{Networking (Sockets, HTTP)}}
+\cvitem{Performance}{Profiling (Valgrind, Intel VTune), Debugging, Optimization}
+\cvitem{DevOps}{Docker, CI/CD, GitHub Actions, Jenkins}
+\cvitem{Cloud}{AWS (EC2, S3, RDS)}
+\cvitem{Databases}{MySQL (Indexing, Query Optimization)}
+\cvitem{Tools}{Linux, Git, \textbf{CMake}}
+
+%----------------------EDUCATION----------------------
+\section{Education}
+
+\cventry{2021 -- 2023}{M.Tech, IISc Bangalore}{}{}{}{}
+\cventry{2017 -- 2021}{B.Tech, NIT Jamshedpur}{}{}{}{}
+
+\end{document}

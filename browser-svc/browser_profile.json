@@ -1,12 +1,62 @@
 {
-  "name": "Saurav Subaru",
-  "email": "sauravsubaru@gmail.com",
-  "phone": "",
-  "linkedin": "",
-  "experience_years": 5,
-  "notice_period": "immediate",
-  "target_roles": ["Backend Engineer", "Python Developer", "ML Engineer"],
-  "target_companies": ["Stripe", "Razorpay", "CRED"],
-  "skills": ["Python", "FastAPI", "ML"],
+  "name": "Saurav Kumar",
+  "email": "sauravkr031@gmail.com",
+  "phone": "7488864354",
+  "linkedin": "https://www.linkedin.com/in/saurav-kumar-2032bb213/",
+  "github": "https://github.com/SauravShadow",
+  "portfolio": "https://www.saurav-info.xyz/",
+  "leetcode": "https://leetcode.com/u/Saurav_Subaru/",
+  "experience_years": 3,
+  "notice_period": "2 months",
+  "start_date": "45 days from offer",
+  "current_company": "Keysight Technologies",
+  "current_title": "R&D Engineer 1",
+  "education": [
+    {
+      "degree": "M.Tech",
+      "institution": "IISc Bangalore",
+      "year": 2023
+    },
+    {
+      "degree": "B.Tech",
+      "institution": "NIT Jamshedpur",
+      "year": 2021
+    }
+  ],
+  "work_authorization": "Authorized to work in India, no visa required",
+  "relocation": "Open to relocation within Bangalore; remote/hybrid preferred otherwise",
+  "salary": {
+    "current_lpa": 15,
+    "expected_lpa": 25
+  },
+  "how_heard": "LinkedIn",
+  "eeo": {
+    "gender": "Male",
+    "ethnicity": "Asian",
+    "veteran_status": "Non-veteran",
+    "disability_status": "No disability"
+  },
+  "target_roles": [
+    "Software Engineer (C++)",
+    "Backend Engineer",
+    "Systems Engineer"
+  ],
+  "target_companies": [
+    "Stripe",
+    "Razorpay",
+    "CRED",
+    "NVIDIA",
+    "Qualcomm",
+    "Google"
+  ],
+  "skills": [
+    "C++",
+    "Python",
+    "Multithreading",
+    "Concurrency",
+    "System Design",
+    "Low-latency Systems",
+    "Linux"
+  ],
   "location_preference": "Bangalore / Remote"
 }

@@ -166,10 +166,6 @@ def parse_tool_call(text: str) -> Tuple[Optional[str], Optional[dict]]:
     if re.search(r'\[READ_INBOX\]', text):
         return "read_inbox", {}
 
-    m = re.search(r'\[DONE:\s*(.*?)\]', text, re.DOTALL)
-    if m:
-        return "done", {"summary": m.group(1).strip()}
-
     m = re.search(r'\[BASH:\s*(.*?)\]', text, re.DOTALL)
     if m:
         return "bash", {"cmd": m.group(1).strip()}
@@ -301,6 +297,10 @@ def parse_tool_call(text: str) -> Tuple[Optional[str], Optional[dict]]:
     m = re.search(r'\[BROWSER_PROFILE_MATCH\]', text)
     if m:
         return "browser_profile_match", {}
+
+    m = re.search(r'\[DONE:\s*(.*?)\]', text, re.DOTALL)
+    if m:
+        return "done", {"summary": m.group(1).strip()}
 
     return None, None
 

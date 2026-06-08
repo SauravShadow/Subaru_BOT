@@ -1,8 +1,9 @@
+import asyncio
 import json
 import os
 from dataclasses import dataclass
 
-import anthropic
+import google.genai as genai
 
 _SYSTEM = (
     "You are an expert LaTeX CV editor. Given a job description and a LaTeX CV source, "
@@ -21,17 +22,16 @@ class CVEdit:
 
 
 async def enhance_cv(job_description: str, latex_source: str) -> CVEdit:
-    client = anthropic.AsyncAnthropic(api_key=os.environ["ANTHROPIC_API_KEY"])
-    msg = await client.messages.create(
-        model="claude-sonnet-4-6",
-        max_tokens=2048,
-        system=_SYSTEM,
-        messages=[{
-            "role": "user",
-            "content": f"JOB DESCRIPTION:\n{job_description}\n\nLATEX CV:\n{latex_source}",
-        }],
+    client = genai.Client(api_key=os.environ["GEMINI_API_KEY"])
+    response = await asyncio.to_thread(
+        client.models.generate_content,
+        model="gemini-3.5-flash",
+        contents=(
+            f"{_SYSTEM}\n\n"
+            f"JOB DESCRIPTION:\n{job_description}\n\nLATEX CV:\n{latex_source}"
+        ),
     )
-    raw = msg.content[0].text.strip()
+    raw = (response.text or "").strip()
     if raw.startswith("```"):
         raw = raw.split("```")[1]
         if raw.startswith("json"):
@@ -41,7 +41,7 @@ async def enhance_cv(job_description: str, latex_source: str) -> CVEdit:
     try:
         data = json.loads(raw)
     except json.JSONDecodeError as e:
-        raise ValueError(f"Claude returned non-JSON response: {raw!r}") from e
+        raise ValueError(f"Gemini returned non-JSON response: {raw!r}") from e
     return CVEdit(edits=data.get("edits", []), keywords=data.get("keywords", []))
 
 
