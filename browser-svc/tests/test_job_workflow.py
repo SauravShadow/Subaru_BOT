@@ -134,7 +134,8 @@ async def test_pause_for_input_escalates_then_resolves(monkeypatch):
     from session_manager import SlotInfo
 
     slot = SlotInfo(slot_id=2)
-    slot.resume_event.set()  # pre-set so wait_for_resume returns immediately
+    # resume_event is lazily initialised by mark_blocked; wait_for_resume is mocked
+    # so no pre-set is needed here.
 
     mock_sm = AsyncMock()
     mock_sm.mark_blocked = AsyncMock()

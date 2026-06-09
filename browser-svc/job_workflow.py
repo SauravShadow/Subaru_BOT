@@ -351,9 +351,9 @@ async def apply_to_job(
             blocker = await detect_blocker(page)
             if blocker:
                 await pause_for_input(page, slot_info, blocker, relay)
-                # Continue from the now-unblocked page state — re-fetch rather than
-                # restart, per the spec's "not a restart from scratch" requirement.
-                jd = await fetch_job_description(page, url)
+                # Use page.url (current post-resolution URL) not the original url,
+                # so we don't navigate back into the same captcha/login wall.
+                jd = await fetch_job_description(page, page.url)
 
         try:
             role = await page.title() or "Role"
