@@ -179,3 +179,24 @@ def test_ensure_interactive_starts_screencast_and_returns_ok(client):
 def test_ensure_interactive_rejects_out_of_range_slot(client):
     r = client.post("/slots/4/ensure-interactive")
     assert r.status_code == 400
+
+
+def test_resume_signals_a_blocked_slot(client):
+    import main as m
+    with patch.object(m.session_manager, "resume", return_value=True) as mock_resume:
+        r = client.post("/slots/2/resume")
+    assert r.status_code == 200
+    assert r.json() == {"ok": True}
+    mock_resume.assert_called_once_with(2)
+
+
+def test_resume_rejects_a_slot_that_is_not_blocked(client):
+    import main as m
+    with patch.object(m.session_manager, "resume", return_value=False):
+        r = client.post("/slots/2/resume")
+    assert r.status_code == 409
+
+
+def test_resume_rejects_out_of_range_slot(client):
+    r = client.post("/slots/9/resume")
+    assert r.status_code == 400

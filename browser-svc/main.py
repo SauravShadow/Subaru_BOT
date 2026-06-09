@@ -357,3 +357,12 @@ async def slot_ensure_interactive(slot_id: int):
     await session_manager.ensure_interactive(slot_id, relay)
     return {"ok": True}
 
+
+@app.post("/slots/{slot_id}/resume")
+async def slot_resume(slot_id: int):
+    if slot_id < 0 or slot_id >= session_manager.NUM_SLOTS:
+        raise HTTPException(400, f"slot_id must be 0–{session_manager.NUM_SLOTS - 1}")
+    if not session_manager.resume(slot_id):
+        raise HTTPException(409, f"Slot {slot_id} is not currently awaiting input")
+    return {"ok": True}
+
