@@ -110,3 +110,37 @@ def test_browser_apply_pattern_matches_full_tag():
     m = browser_apply.PATTERN.search(sample)
     assert m is not None
     assert m.group(1).strip() == "https://linkedin.com/jobs/123"
+
+
+@pytest.mark.asyncio
+async def test_browser_discover_handler_dispatches_parsed_args(monkeypatch):
+    import asyncio
+    from app.output.handlers import browser_discover
+    send = AsyncMock()
+    dispatched = {}
+
+    async def fake_call_browser_svc(tool_type, tool_args):
+        dispatched["tool_type"] = tool_type
+        dispatched["tool_args"] = tool_args
+        return "[browser-svc: queued]"
+
+    monkeypatch.setattr(browser_discover, "call_browser_svc", fake_call_browser_svc)
+    text, bark_ok = await browser_discover.handle("Python backend | linkedin | Bangalore", "maya", send)
+    await asyncio.sleep(0)
+
+    assert bark_ok is False
+    assert "Python backend" in text and "linkedin" in text and "Bangalore" in text
+    assert dispatched["tool_type"] == "browser_discover"
+    assert dispatched["tool_args"] == {
+        "keywords": "Python backend", "platform": "linkedin", "location": "Bangalore",
+    }
+    send.assert_called_once()
+    assert send.call_args[0][0]["tool"] == "browser_discover"
+
+
+def test_browser_discover_pattern_matches_full_tag():
+    from app.output.handlers import browser_discover
+    sample = "[BROWSER_DISCOVER: Python backend | linkedin | Bangalore]"
+    m = browser_discover.PATTERN.search(sample)
+    assert m is not None
+    assert "Python backend" in m.group(1)
