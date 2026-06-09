@@ -175,3 +175,34 @@ def test_browser_company_pattern_matches_full_tag():
     m = browser_company.PATTERN.search(sample)
     assert m is not None
     assert m.group(1).strip() == "Stripe"
+
+
+@pytest.mark.asyncio
+async def test_browser_profile_match_handler_dispatches_and_returns_status(monkeypatch):
+    import asyncio
+    from app.output.handlers import browser_profile_match
+    send = AsyncMock()
+    dispatched = {}
+
+    async def fake_call_browser_svc(tool_type, tool_args):
+        dispatched["tool_type"] = tool_type
+        dispatched["tool_args"] = tool_args
+        return "[browser-svc: queued]"
+
+    monkeypatch.setattr(browser_profile_match, "call_browser_svc", fake_call_browser_svc)
+    text, bark_ok = await browser_profile_match.handle("BROWSER_PROFILE_MATCH", "maya", send)
+    await asyncio.sleep(0)
+
+    assert bark_ok is False
+    assert "profile" in text.lower()
+    assert dispatched == {"tool_type": "browser_profile_match", "tool_args": {}}
+    send.assert_called_once()
+    assert send.call_args[0][0]["tool"] == "browser_profile_match"
+
+
+def test_browser_profile_match_pattern_matches_full_tag():
+    from app.output.handlers import browser_profile_match
+    sample = "[BROWSER_PROFILE_MATCH]"
+    m = browser_profile_match.PATTERN.search(sample)
+    assert m is not None
+    assert m.group(1) == "BROWSER_PROFILE_MATCH"
