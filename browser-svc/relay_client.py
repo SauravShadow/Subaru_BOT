@@ -5,10 +5,11 @@ import os
 
 import websockets
 
-logging.basicConfig(
-    level=logging.INFO,
-    format="%(asctime)s %(levelname)-8s %(name)s — %(message)s",
-)
+if not logging.getLogger().handlers:
+    logging.basicConfig(
+        level=logging.INFO,
+        format="%(asctime)s %(levelname)-8s %(name)s — %(message)s",
+    )
 logger = logging.getLogger(__name__)
 
 NEXUS_WS_URL = os.environ.get(
