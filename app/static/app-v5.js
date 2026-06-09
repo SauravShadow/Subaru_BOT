@@ -444,11 +444,13 @@ function showIsland(name) {
     if (!iframe.src || iframe.src === location.origin + "/") iframe.src = "/static/previews/index.html";
   }
   if (name === "browser") startBrowserAutoRefresh();
+  if (name === "board") startBoardStatusPolling();
 }
 
 function hideIsland(name) {
   $id(`island-${name}`).style.display = "none";
   if (name === "browser") stopBrowserAutoRefresh();
+  if (name === "board") stopBoardStatusPolling();
 }
 
 function initDraggableIslands() {
@@ -1169,6 +1171,7 @@ function initBrowserBoard() {
         `<span style="color:var(--muted);font-size:11px">${_SLOT_LABELS[i]}</span>` +
         `<span style="color:var(--border);font-size:9px">idle</span>` +
       `</div>` +
+      `<div id="bchip-${i}" style="position:absolute;top:4px;left:4px;padding:1px 6px;border-radius:3px;font-size:8px;font-weight:700;background:rgba(255,255,255,0.08);color:var(--muted)">idle</div>` +
       `<div id="bstatus-${i}" style="position:absolute;bottom:0;left:0;right:0;padding:3px 6px;background:rgba(0,0,0,0.75);font-size:9px;color:#00d4ff;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;display:none"></div>` +
       `<div id="bbadge-${i}" style="position:absolute;top:4px;right:4px;padding:1px 5px;border-radius:3px;font-size:8px;font-weight:700;background:rgba(0,255,128,0.15);color:#0f0;display:none">LIVE</div>`;
 
@@ -1198,6 +1201,8 @@ function initBrowserBoard() {
       idle: document.getElementById(`bidle-${i}`),
       status: document.getElementById(`bstatus-${i}`),
       badge: document.getElementById(`bbadge-${i}`),
+      chip: document.getElementById(`bchip-${i}`),
+      lastFrameAt: null,
     };
   }
 
@@ -1238,11 +1243,68 @@ function handleBrowserFrame(obj) {
     tile.img.style.display = "block";
     tile.idle.style.display = "none";
     tile.badge.style.display = "block";
+    tile.lastFrameAt = Date.now();
   }
   const label = (obj.action ? obj.action + (obj.url ? "  —  " + obj.url : "") : obj.url) || "";
   if (label) {
     tile.status.textContent = label;
     tile.status.style.display = "block";
+  }
+}
+
+function _formatFrameAge(ms) {
+  if (ms == null) return "no frames yet";
+  const s = Math.round(ms / 1000);
+  if (s < 60) return `${s}s ago`;
+  return `${Math.round(s / 60)}m ago`;
+}
+
+// Combines browser-svc's polled slot state with frame-arrival recency into one
+// chip: "busy" + a frame within the last 5s reads as "streaming"; "busy" with
+// no recent frame reads as "connecting" — the stalled-stream signal the spec
+// wants visible even when the JPEG stream itself goes silent. An "awaiting
+// input" branch belongs here once Phase 4 (spec Section 3) defines the
+// escalation signal that would set it.
+function _computeSlotChip(backendState, lastFrameAt) {
+  const ageMs = lastFrameAt != null ? Date.now() - lastFrameAt : null;
+  if (backendState === "error") return { text: "error", color: "#ff4444" };
+  if (backendState === "idle")  return { text: "idle",  color: "var(--muted)" };
+  if (ageMs == null || ageMs > 5000) {
+    return { text: `connecting · ${_formatFrameAge(ageMs)}`, color: "#ffaa00" };
+  }
+  return { text: `streaming · ${_formatFrameAge(ageMs)}`, color: "#00ff88" };
+}
+
+let _boardStatusInterval = null;
+
+async function pollBoardSlotStatuses() {
+  let slots;
+  try {
+    const r = await fetch("/api/browser-svc/slots");
+    if (!r.ok) return;
+    slots = await r.json();
+  } catch (e) {
+    return; // browser-svc unreachable this tick — chips simply hold their last value
+  }
+  for (const s of slots) {
+    const tile = _boardTiles[s.slot_id];
+    if (!tile || !tile.chip) continue;
+    const label = _computeSlotChip(s.state, tile.lastFrameAt);
+    tile.chip.textContent = label.text;
+    tile.chip.style.color = label.color;
+  }
+}
+
+function startBoardStatusPolling() {
+  if (_boardStatusInterval) return;
+  pollBoardSlotStatuses();
+  _boardStatusInterval = setInterval(pollBoardSlotStatuses, 3000);
+}
+
+function stopBoardStatusPolling() {
+  if (_boardStatusInterval) {
+    clearInterval(_boardStatusInterval);
+    _boardStatusInterval = null;
   }
 }
 
