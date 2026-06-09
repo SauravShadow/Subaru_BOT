@@ -95,7 +95,7 @@ async def _apply_on_slot(slot: SlotInfo, url: str, tailor_cv: bool):
     cv_path = str(CV_DEFAULT_PATH)
     result = await apply_to_job(
         slot.page, url, cv_path,
-        slot_info=slot, tailor_cv=tailor_cv,
+        slot_info=slot, tailor_cv=tailor_cv, relay=relay,
     )
     logger.info("Apply result: %s %s → %s", result.company, result.role, result.status)
     relay.push({

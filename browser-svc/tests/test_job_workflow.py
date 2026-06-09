@@ -125,3 +125,46 @@ async def test_detect_blocker_returns_none_when_page_is_clean():
     page.locator = MagicMock(return_value=locator_mock)
 
     assert await detect_blocker(page) is None
+
+
+@pytest.mark.asyncio
+async def test_pause_for_input_escalates_then_resolves(monkeypatch):
+    from job_workflow import pause_for_input
+    import session_manager as sm_module
+    from session_manager import SlotInfo
+
+    slot = SlotInfo(slot_id=2)
+    slot.resume_event.set()  # pre-set so wait_for_resume returns immediately
+
+    mock_sm = AsyncMock()
+    mock_sm.mark_blocked = AsyncMock()
+    mock_sm.ensure_interactive = AsyncMock()
+    mock_sm.wait_for_resume = AsyncMock()
+    monkeypatch.setattr(sm_module, "session_manager", mock_sm)
+
+    page = AsyncMock()
+    page.url = "https://naukri.com/jobs/123"
+    relay = MagicMock()
+
+    blocker = {"blocker_type": "login_wall", "description": "Login wall on https://naukri.com/jobs/123"}
+    await pause_for_input(page, slot, blocker, relay)
+
+    mock_sm.mark_blocked.assert_called_once_with(2, "Login wall on https://naukri.com/jobs/123")
+    mock_sm.ensure_interactive.assert_called_once_with(2, relay)
+    mock_sm.wait_for_resume.assert_called_once_with(2)
+
+    assert relay.push.call_count == 2
+    blocked_call, resolved_call = relay.push.call_args_list
+    assert blocked_call.args[0] == {
+        "type": "browser_blocked",
+        "slot_id": 2,
+        "blocker_type": "login_wall",
+        "description": "Login wall on https://naukri.com/jobs/123",
+    }
+    resolved_payload = resolved_call.args[0]
+    assert resolved_payload["type"] == "browser_blocker_resolved"
+    assert resolved_payload["agent_id"] == "maya"
+    assert resolved_payload["site"] == "naukri.com"
+    assert resolved_payload["blocker_type"] == "login_wall"
+    assert resolved_payload["resolution"] == "user took over in interactive mode and resumed manually"
+    assert "timestamp" in resolved_payload

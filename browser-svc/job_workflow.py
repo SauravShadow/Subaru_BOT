@@ -4,6 +4,7 @@ import logging
 import os
 import re
 from dataclasses import dataclass, field
+from datetime import datetime
 from pathlib import Path
 from typing import TYPE_CHECKING, Optional
 from urllib.parse import urlparse
@@ -219,6 +220,43 @@ async def detect_blocker(page: "Page") -> Optional[dict]:
     return None
 
 
+async def pause_for_input(page: "Page", slot_info: "SlotInfo", blocker: dict, relay) -> None:
+    """Escalate a detected blocker to a human, per the spec's escalation sequence:
+    switch to interactive mode, mark the slot 'awaiting input' for the dashboard,
+    notify the user with a Take-over prompt, then block until they signal resume.
+    On the way out, report what happened so the learning loop can persist it.
+    """
+    import session_manager as sm_module
+
+    blocker_type = blocker["blocker_type"]
+    description  = blocker["description"]
+    logger.warning("Slot %d blocked (%s): %s", slot_info.slot_id, blocker_type, description)
+
+    slot_info.action = f"Awaiting input — {description}"
+    await sm_module.session_manager.mark_blocked(slot_info.slot_id, description)
+    await sm_module.session_manager.ensure_interactive(slot_info.slot_id, relay)
+    relay.push({
+        "type": "browser_blocked",
+        "slot_id": slot_info.slot_id,
+        "blocker_type": blocker_type,
+        "description": description,
+    })
+
+    await sm_module.session_manager.wait_for_resume(slot_info.slot_id)
+
+    logger.info("Slot %d resumed by user — continuing on %s", slot_info.slot_id, page.url)
+    slot_info.action = f"Resumed — continuing on {_guess_company(page.url)}"
+    relay.push({
+        "type": "browser_blocker_resolved",
+        "agent_id": "maya",
+        "site": urlparse(page.url).netloc,
+        "blocker_type": blocker_type,
+        "description": description,
+        "resolution": "user took over in interactive mode and resumed manually",
+        "timestamp": datetime.now().isoformat(),
+    })
+
+
 # ── LinkedIn Easy Apply ───────────────────────────────────────────────────────
 
 async def _apply_linkedin_easy(page: "Page", profile: dict, cv_path: str) -> bool:
@@ -294,6 +332,7 @@ async def apply_to_job(
     cv_path: str,
     slot_info: Optional["SlotInfo"] = None,
     tailor_cv: bool = False,
+    relay=None,
 ) -> ApplyResult:
     try:
         profile = load_profile()
@@ -307,6 +346,15 @@ async def apply_to_job(
             slot_info.url = url
             slot_info.action = "Fetching job description"
         jd = await fetch_job_description(page, url)
+
+        if slot_info is not None and relay is not None:
+            blocker = await detect_blocker(page)
+            if blocker:
+                await pause_for_input(page, slot_info, blocker, relay)
+                # Continue from the now-unblocked page state — re-fetch rather than
+                # restart, per the spec's "not a restart from scratch" requirement.
+                jd = await fetch_job_description(page, url)
+
         try:
             role = await page.title() or "Role"
         except Exception:
