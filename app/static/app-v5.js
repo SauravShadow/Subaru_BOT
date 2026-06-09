@@ -1173,7 +1173,8 @@ function initBrowserBoard() {
       `</div>` +
       `<div id="bchip-${i}" style="position:absolute;top:4px;left:4px;padding:1px 6px;border-radius:3px;font-size:8px;font-weight:700;background:rgba(255,255,255,0.08);color:var(--muted)">idle</div>` +
       `<div id="bstatus-${i}" style="position:absolute;bottom:0;left:0;right:0;padding:3px 6px;background:rgba(0,0,0,0.75);font-size:9px;color:#00d4ff;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;display:none"></div>` +
-      `<div id="bbadge-${i}" style="position:absolute;top:4px;right:4px;padding:1px 5px;border-radius:3px;font-size:8px;font-weight:700;background:rgba(0,255,128,0.15);color:#0f0;display:none">LIVE</div>`;
+      `<div id="bbadge-${i}" style="position:absolute;top:4px;right:4px;padding:1px 5px;border-radius:3px;font-size:8px;font-weight:700;background:rgba(0,255,128,0.15);color:#0f0;display:none">LIVE</div>` +
+      `<button id="btakeover-${i}" style="position:absolute;bottom:4px;right:4px;padding:2px 8px;font-size:8px;font-weight:700;border-radius:3px;border:1px solid #00d4ff;background:rgba(0,212,255,0.12);color:#00d4ff;cursor:pointer;z-index:2">Take over</button>`;
 
     tile.addEventListener("click", e => {
       selectBoardSlot(i);
@@ -1194,6 +1195,15 @@ function initBrowserBoard() {
         });
       }
     });
+
+    const takeoverBtn = tile.querySelector(`#btakeover-${i}`);
+    if (takeoverBtn) {
+      takeoverBtn.addEventListener("click", e => {
+        e.stopPropagation();
+        selectBoardSlot(i);
+        fetch(`/api/browser-svc/slots/${i}/ensure-interactive`, { method: "POST" });
+      });
+    }
 
     grid.appendChild(tile);
     _boardTiles[i] = {
