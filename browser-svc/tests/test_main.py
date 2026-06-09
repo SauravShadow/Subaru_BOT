@@ -165,3 +165,17 @@ async def test_apply_on_slot_pushes_browser_result(client):
         "tool": "browser_apply",
         "result": "Stripe — Backend Engineer: applied (https://linkedin.com/jobs/123)",
     }
+
+
+def test_ensure_interactive_starts_screencast_and_returns_ok(client):
+    import main as m
+    with patch.object(m.session_manager, "ensure_interactive", new_callable=AsyncMock) as mock_ensure:
+        r = client.post("/slots/2/ensure-interactive")
+    assert r.status_code == 200
+    assert r.json() == {"ok": True}
+    mock_ensure.assert_called_once_with(2, m.relay)
+
+
+def test_ensure_interactive_rejects_out_of_range_slot(client):
+    r = client.post("/slots/4/ensure-interactive")
+    assert r.status_code == 400
