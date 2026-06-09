@@ -139,3 +139,29 @@ def test_profile_match_queues(client):
     r = client.post("/profile-match", json={})
     assert r.status_code == 200
     assert r.json()["queued"] is True
+
+
+@pytest.mark.asyncio
+async def test_apply_on_slot_pushes_browser_result(client):
+    import main as m
+    from session_manager import SlotInfo
+    from job_workflow import ApplyResult
+
+    fake_result = ApplyResult(
+        url="https://linkedin.com/jobs/123", company="Stripe", role="Backend Engineer",
+        status="applied",
+    )
+    fake_slot = SlotInfo(slot_id=2)
+
+    with patch("job_workflow.apply_to_job", new_callable=AsyncMock, return_value=fake_result), \
+         patch.object(m.relay, "push") as mock_push:
+        await m._apply_on_slot(fake_slot, "https://linkedin.com/jobs/123", True)
+
+    mock_push.assert_called_once()
+    assert mock_push.call_args[0][0] == {
+        "type": "browser_result",
+        "agent_id": "maya",
+        "slot_id": 2,
+        "tool": "browser_apply",
+        "result": "Stripe — Backend Engineer: applied (https://linkedin.com/jobs/123)",
+    }

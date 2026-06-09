@@ -98,6 +98,13 @@ async def _apply_on_slot(slot: SlotInfo, url: str, tailor_cv: bool):
         slot_info=slot, tailor_cv=tailor_cv,
     )
     logger.info("Apply result: %s %s → %s", result.company, result.role, result.status)
+    relay.push({
+        "type": "browser_result",
+        "agent_id": "maya",
+        "slot_id": slot.slot_id,
+        "tool": "browser_apply",
+        "result": f"{result.company} — {result.role}: {result.status} ({url})",
+    })
     return result
 
 
