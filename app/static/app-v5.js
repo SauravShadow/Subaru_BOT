@@ -630,6 +630,14 @@ function dispatch(obj) {
       logApplyResult(obj);
       break;
 
+    case "browser_blocked":
+      pushNotif(`🧑‍💻 Slot ${obj.slot_id} needs you — ${obj.description || obj.blocker_type}`, "warn");
+      appendMsg("maya", "assistant",
+        `⚠️ I'm stuck on slot ${obj.slot_id} — ${obj.description}\n\n` +
+        `Open the Browser Board, click **Take over**, resolve it, then click **Resume** so I can continue from where I left off.`
+      );
+      break;
+
     case "approval_requested":
       pushNotif(
         `🔐 Approval needed: ${obj.file_path || "file"} (ID: ${obj.approval_id})`,
@@ -1174,6 +1182,7 @@ function initBrowserBoard() {
       `<div id="bchip-${i}" style="position:absolute;top:4px;left:4px;padding:1px 6px;border-radius:3px;font-size:8px;font-weight:700;background:rgba(255,255,255,0.08);color:var(--muted)">idle</div>` +
       `<div id="bstatus-${i}" style="position:absolute;bottom:0;left:0;right:0;padding:3px 6px;background:rgba(0,0,0,0.75);font-size:9px;color:#00d4ff;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;display:none"></div>` +
       `<div id="bbadge-${i}" style="position:absolute;top:4px;right:4px;padding:1px 5px;border-radius:3px;font-size:8px;font-weight:700;background:rgba(0,255,128,0.15);color:#0f0;display:none">LIVE</div>` +
+      `<button id="bresume-${i}" style="position:absolute;bottom:4px;left:4px;padding:2px 8px;font-size:8px;font-weight:700;border-radius:3px;border:1px solid #ff66cc;background:rgba(255,102,204,0.12);color:#ff66cc;cursor:pointer;z-index:2;display:none">Resume</button>` +
       `<button id="btakeover-${i}" style="position:absolute;bottom:4px;right:4px;padding:2px 8px;font-size:8px;font-weight:700;border-radius:3px;border:1px solid #00d4ff;background:rgba(0,212,255,0.12);color:#00d4ff;cursor:pointer;z-index:2">Take over</button>`;
 
     tile.addEventListener("click", e => {
@@ -1205,6 +1214,14 @@ function initBrowserBoard() {
       });
     }
 
+    const resumeBtn = tile.querySelector(`#bresume-${i}`);
+    if (resumeBtn) {
+      resumeBtn.addEventListener("click", e => {
+        e.stopPropagation();
+        fetch(`/api/browser-svc/slots/${i}/resume`, { method: "POST" });
+      });
+    }
+
     grid.appendChild(tile);
     _boardTiles[i] = {
       img: document.getElementById(`bframe-${i}`),
@@ -1212,6 +1229,7 @@ function initBrowserBoard() {
       status: document.getElementById(`bstatus-${i}`),
       badge: document.getElementById(`bbadge-${i}`),
       chip: document.getElementById(`bchip-${i}`),
+      resumeBtn: document.getElementById(`bresume-${i}`),
       lastFrameAt: null,
     };
   }
@@ -1275,8 +1293,12 @@ function _formatFrameAge(ms) {
 // wants visible even when the JPEG stream itself goes silent. An "awaiting
 // input" branch belongs here once Phase 4 (spec Section 3) defines the
 // escalation signal that would set it.
-function _computeSlotChip(backendState, lastFrameAt) {
+function _computeSlotChip(backendState, lastFrameAt, blockedReason) {
   const ageMs = lastFrameAt != null ? Date.now() - lastFrameAt : null;
+  if (blockedReason) {
+    const short = blockedReason.length > 36 ? blockedReason.slice(0, 36) + "…" : blockedReason;
+    return { text: `awaiting input · ${short}`, color: "#ff66cc" };
+  }
   if (backendState === "error") return { text: "error", color: "#ff4444" };
   if (backendState === "idle")  return { text: "idle",  color: "var(--muted)" };
   if (ageMs == null || ageMs > 5000) {
@@ -1299,9 +1321,12 @@ async function pollBoardSlotStatuses() {
   for (const s of slots) {
     const tile = _boardTiles[s.slot_id];
     if (!tile || !tile.chip) continue;
-    const label = _computeSlotChip(s.state, tile.lastFrameAt);
+    const label = _computeSlotChip(s.state, tile.lastFrameAt, s.blocked_reason);
     tile.chip.textContent = label.text;
     tile.chip.style.color = label.color;
+    if (tile.resumeBtn) {
+      tile.resumeBtn.style.display = s.blocked_reason ? "block" : "none";
+    }
   }
 }
 
