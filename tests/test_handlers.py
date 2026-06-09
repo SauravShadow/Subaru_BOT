@@ -144,3 +144,34 @@ def test_browser_discover_pattern_matches_full_tag():
     m = browser_discover.PATTERN.search(sample)
     assert m is not None
     assert "Python backend" in m.group(1)
+
+
+@pytest.mark.asyncio
+async def test_browser_company_handler_dispatches_and_returns_status(monkeypatch):
+    import asyncio
+    from app.output.handlers import browser_company
+    send = AsyncMock()
+    dispatched = {}
+
+    async def fake_call_browser_svc(tool_type, tool_args):
+        dispatched["tool_type"] = tool_type
+        dispatched["tool_args"] = tool_args
+        return "[browser-svc: queued]"
+
+    monkeypatch.setattr(browser_company, "call_browser_svc", fake_call_browser_svc)
+    text, bark_ok = await browser_company.handle("Stripe", "maya", send)
+    await asyncio.sleep(0)
+
+    assert bark_ok is False
+    assert "Stripe" in text
+    assert dispatched == {"tool_type": "browser_company", "tool_args": {"company": "Stripe"}}
+    send.assert_called_once()
+    assert send.call_args[0][0]["tool"] == "browser_company"
+
+
+def test_browser_company_pattern_matches_full_tag():
+    from app.output.handlers import browser_company
+    sample = "[BROWSER_COMPANY: Stripe]"
+    m = browser_company.PATTERN.search(sample)
+    assert m is not None
+    assert m.group(1).strip() == "Stripe"
