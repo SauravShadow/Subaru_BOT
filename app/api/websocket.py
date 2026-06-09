@@ -181,6 +181,29 @@ async def _run_worker_bg(
                 )
 
 
+async def handle_browser_result(data: dict) -> None:
+    """Feed a completed browser-svc task back into the originating worker's
+    conversation, mirroring _run_worker_bg's record → run_agent → record sequence
+    so the worker is grounded in a real result instead of narrating unconfirmed claims."""
+    agent_id   = data.get("agent_id", "maya")
+    slot_id    = data.get("slot_id")
+    tool       = data.get("tool", "browser action")
+    result     = data.get("result", "")
+    slot_label = f" (slot {slot_id})" if slot_id is not None else ""
+    task_text  = f"[Browser result{slot_label} — {tool}] {result}"
+
+    async def send(payload: dict) -> None:
+        if "agent" not in payload and "_raw_json" not in payload:
+            payload = {**payload, "agent": agent_id}
+        await broadcast_event(payload)
+
+    await broadcast_event({"type": "thinking", "agent": agent_id})
+    state.record(agent_id, "user", task_text)
+    full_resp = await run_agent(agent_id, task_text, send)
+    state.record(agent_id, "assistant", deleg_svc.clean_response(full_resp))
+    await broadcast_event({"type": "done", "agent": agent_id})
+
+
 # ── Message router ─────────────────────────────────────────────────────────────
 
 async def _heartbeat_loop(session: Session) -> None:
