@@ -162,6 +162,24 @@ def local_edit(path_str: str, target: str, replacement: str) -> str:
 _KNOWN_PLATFORMS = {"linkedin", "naukri", "indeed", "glassdoor", "instahyre"}
 
 
+def parse_browser_discover_args(raw: str) -> dict:
+    """Split 'keywords | platform | location' into a dict, defaulting platform/location
+    when the second segment isn't a recognised job board (so 'keywords | a city name'
+    isn't mistaken for 'keywords | platform')."""
+    parts = [p.strip() for p in raw.split("|")]
+    if len(parts) >= 2 and parts[1].lower() not in _KNOWN_PLATFORMS:
+        return {
+            "keywords": parts[0],
+            "platform": "linkedin",
+            "location": "Bangalore",
+        }
+    return {
+        "keywords": parts[0] if parts else "",
+        "platform": parts[1] if len(parts) > 1 else "linkedin",
+        "location": parts[2] if len(parts) > 2 else "Bangalore",
+    }
+
+
 def parse_tool_call(text: str) -> Tuple[Optional[str], Optional[dict]]:
     if re.search(r'\[READ_INBOX\]', text):
         return "read_inbox", {}
@@ -276,19 +294,7 @@ def parse_tool_call(text: str) -> Tuple[Optional[str], Optional[dict]]:
 
     m = re.search(r'\[BROWSER_DISCOVER:\s*([^\]]+)\]', text)
     if m:
-        raw = m.group(1)
-        parts = [p.strip() for p in raw.split("|")]
-        if len(parts) >= 2 and parts[1].lower() not in _KNOWN_PLATFORMS:
-            return "browser_discover", {
-                "keywords": parts[0],
-                "platform": "linkedin",
-                "location": "Bangalore",
-            }
-        return "browser_discover", {
-            "keywords": parts[0] if parts else "",
-            "platform": parts[1] if len(parts) > 1 else "linkedin",
-            "location": parts[2] if len(parts) > 2 else "Bangalore",
-        }
+        return "browser_discover", parse_browser_discover_args(m.group(1))
 
     m = re.search(r'\[BROWSER_COMPANY:\s*([^\]]+)\]', text)
     if m:

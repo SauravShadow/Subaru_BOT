@@ -96,7 +96,17 @@ async def browser_relay_endpoint(ws: WebSocket):
                 break
             except Exception:
                 break  # malformed JSON — disconnect
-            await broadcast_event(data)
+            if data.get("type") == "browser_result":
+                # Forward the active session's model so re-invocation honours any
+                # explicit backend override (e.g. gemini) set by the user.
+                active_model = next(
+                    (s.model for s in ws_module._sessions), "claude"
+                )
+                asyncio.create_task(ws_module.handle_browser_result(data, active_model))
+            elif data.get("type") == "browser_blocker_resolved":
+                asyncio.create_task(ws_module.handle_browser_blocker_resolved(data))
+            else:
+                await broadcast_event(data)
     except Exception:
         logger.exception("browser_relay_endpoint error")
 

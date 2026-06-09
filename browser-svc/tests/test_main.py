@@ -51,14 +51,14 @@ def client(tmp_path):
 def test_health(client):
     r = client.get("/health")
     assert r.status_code == 200
-    assert r.json() == {"status": "ok", "slots": 5}
+    assert r.json() == {"status": "ok", "slots": 4}
 
 
 def test_get_slots(client):
     r = client.get("/slots")
     assert r.status_code == 200
     slots = r.json()
-    assert len(slots) == 5
+    assert len(slots) == 4
     assert all(s["state"] == "idle" for s in slots)
 
 
@@ -89,13 +89,13 @@ def test_patch_profile(client):
     assert data["name"] == "Test User"
 
 
-def test_apply_invalid_slot_zero(client):
-    r = client.post("/apply", json={"url": "https://linkedin.com/jobs/123", "slot_id": 0})
+def test_apply_invalid_slot_negative(client):
+    r = client.post("/apply", json={"url": "https://linkedin.com/jobs/123", "slot_id": -1})
     assert r.status_code == 400
 
 
-def test_apply_invalid_slot_five(client):
-    r = client.post("/apply", json={"url": "https://linkedin.com/jobs/123", "slot_id": 5})
+def test_apply_invalid_slot_four(client):
+    r = client.post("/apply", json={"url": "https://linkedin.com/jobs/123", "slot_id": 4})
     assert r.status_code == 400
 
 
@@ -105,6 +105,22 @@ def test_apply_queues_job(client):
     data = r.json()
     assert data["queued"] is True
     assert data["slot_id"] == 1
+
+
+def test_apply_without_slot_id_picks_free_slot(client):
+    r = client.post("/apply", json={"url": "https://linkedin.com/jobs/123"})
+    assert r.status_code == 200
+    data = r.json()
+    assert data["queued"] is True
+    assert data["slot_id"] == 0
+
+
+def test_apply_returns_409_when_no_free_slot(client):
+    import main as m
+    with patch.object(m.session_manager, "find_free_slot", return_value=None):
+        r = client.post("/apply", json={"url": "https://linkedin.com/jobs/123"})
+    assert r.status_code == 409
+    assert r.json()["detail"] == "No free slot available"
 
 
 def test_discover_queues_job(client):
@@ -123,3 +139,64 @@ def test_profile_match_queues(client):
     r = client.post("/profile-match", json={})
     assert r.status_code == 200
     assert r.json()["queued"] is True
+
+
+@pytest.mark.asyncio
+async def test_apply_on_slot_pushes_browser_result(client):
+    import main as m
+    from session_manager import SlotInfo
+    from job_workflow import ApplyResult
+
+    fake_result = ApplyResult(
+        url="https://linkedin.com/jobs/123", company="Stripe", role="Backend Engineer",
+        status="applied",
+    )
+    fake_slot = SlotInfo(slot_id=2)
+
+    with patch("job_workflow.apply_to_job", new_callable=AsyncMock, return_value=fake_result), \
+         patch.object(m.relay, "push") as mock_push:
+        await m._apply_on_slot(fake_slot, "https://linkedin.com/jobs/123", True)
+
+    mock_push.assert_called_once()
+    assert mock_push.call_args[0][0] == {
+        "type": "browser_result",
+        "agent_id": "maya",
+        "slot_id": 2,
+        "tool": "browser_apply",
+        "result": "Stripe — Backend Engineer: applied (https://linkedin.com/jobs/123)",
+    }
+
+
+def test_ensure_interactive_starts_screencast_and_returns_ok(client):
+    import main as m
+    with patch.object(m.session_manager, "ensure_interactive", new_callable=AsyncMock) as mock_ensure:
+        r = client.post("/slots/2/ensure-interactive")
+    assert r.status_code == 200
+    assert r.json() == {"ok": True}
+    mock_ensure.assert_called_once_with(2, m.relay)
+
+
+def test_ensure_interactive_rejects_out_of_range_slot(client):
+    r = client.post("/slots/4/ensure-interactive")
+    assert r.status_code == 400
+
+
+def test_resume_signals_a_blocked_slot(client):
+    import main as m
+    with patch.object(m.session_manager, "resume", return_value=True) as mock_resume:
+        r = client.post("/slots/2/resume")
+    assert r.status_code == 200
+    assert r.json() == {"ok": True}
+    mock_resume.assert_called_once_with(2)
+
+
+def test_resume_rejects_a_slot_that_is_not_blocked(client):
+    import main as m
+    with patch.object(m.session_manager, "resume", return_value=False):
+        r = client.post("/slots/2/resume")
+    assert r.status_code == 409
+
+
+def test_resume_rejects_out_of_range_slot(client):
+    r = client.post("/slots/9/resume")
+    assert r.status_code == 400

@@ -2,7 +2,7 @@
 import pytest
 from unittest.mock import AsyncMock, patch
 
-from app.agents.tools import parse_tool_call
+from app.agents.tools import parse_tool_call, parse_browser_discover_args
 from app.services.browser_svc import call_browser_svc
 
 
@@ -36,6 +36,21 @@ def test_parse_browser_discover_non_platform_second_part():
     assert args["keywords"] == "React developer"
     assert args["platform"] == "linkedin"
     assert args["location"] == "Bangalore"
+
+
+def test_parse_browser_discover_args_with_platform_and_location():
+    parsed = parse_browser_discover_args("Python backend | linkedin | Bangalore")
+    assert parsed == {"keywords": "Python backend", "platform": "linkedin", "location": "Bangalore"}
+
+
+def test_parse_browser_discover_args_defaults():
+    parsed = parse_browser_discover_args("FastAPI jobs")
+    assert parsed == {"keywords": "FastAPI jobs", "platform": "linkedin", "location": "Bangalore"}
+
+
+def test_parse_browser_discover_args_non_platform_second_part():
+    parsed = parse_browser_discover_args("React developer | remote")
+    assert parsed == {"keywords": "React developer", "platform": "linkedin", "location": "Bangalore"}
 
 
 def test_parse_browser_company():
@@ -101,3 +116,13 @@ async def test_call_browser_svc_slot_busy_409():
         result = await call_browser_svc("browser_apply", {"url": "https://test.com"})
 
     assert "slot busy" in result
+
+
+@pytest.mark.asyncio
+async def test_call_browser_svc_omits_slot_id_so_server_can_autopick():
+    from app.services.browser_svc import _PAYLOAD_MAP
+
+    assert "slot_id" not in _PAYLOAD_MAP["browser_apply"]({"url": "https://test.com"})
+    assert "slot_id" not in _PAYLOAD_MAP["browser_discover"]({"keywords": "Python"})
+    assert "slot_id" not in _PAYLOAD_MAP["browser_company"]({"company": "Stripe"})
+    assert "slot_id" not in _PAYLOAD_MAP["browser_profile_match"]({})

@@ -35,6 +35,7 @@ from app.agents import definitions as defs
 from app.agents.executor import run_agent
 from app.services import delegation as deleg_svc
 from app.services import email as email_svc
+from app.services import memory as mem_svc
 from app.state import manager as state
 from app.skills import skill_loader
 
@@ -179,6 +180,50 @@ async def _run_worker_bg(
                     "Chaining to next pending task #%d for agent '%s'",
                     next_item["id"], agent_id,
                 )
+
+
+async def handle_browser_result(data: dict, model: str = "claude") -> None:
+    """Feed a completed browser-svc task back into the originating worker's
+    conversation, mirroring _run_worker_bg's record → run_agent → record sequence
+    so the worker is grounded in a real result instead of narrating unconfirmed claims.
+
+    The ``model`` parameter is forwarded to run_agent so that re-invocations honour
+    the session's active backend (e.g. gemini) rather than always defaulting to the
+    classification path.  The caller (browser_relay_endpoint) reads the model from
+    any live frontend session so explicit overrides are preserved.
+    """
+    agent_id   = data.get("agent_id", "maya")
+    slot_id    = data.get("slot_id")
+    tool       = data.get("tool", "browser action")
+    result     = data.get("result", "")
+    slot_label = f" (slot {slot_id})" if slot_id is not None else ""
+    task_text  = f"[Browser result{slot_label} — {tool}] {result}"
+
+    async def send(payload: dict) -> None:
+        if "agent" not in payload and "_raw_json" not in payload:
+            payload = {**payload, "agent": agent_id}
+        await broadcast_event(payload)
+
+    await broadcast_event({"type": "thinking", "agent": agent_id})
+    state.record(agent_id, "user", task_text)
+    full_resp = await run_agent(agent_id, task_text, send, model)
+    state.record(agent_id, "assistant", deleg_svc.clean_response(full_resp))
+    await broadcast_event({"type": "done", "agent": agent_id})
+
+
+async def handle_browser_blocker_resolved(data: dict) -> None:
+    """Persist a resolved automation blocker as a structured memory, closing the
+    spec's learning loop. No separate retrieval path is needed: _build_context_block
+    (executor.py:138-141) already calls get_relevant_memories(agent_id, user_query)
+    on every turn, so once this content names the site, it surfaces in Maya's live
+    context the next time the user asks her to work on that site."""
+    agent_id     = data.get("agent_id", "maya")
+    site         = data.get("site", "")
+    blocker_type = data.get("blocker_type", "")
+    resolution   = data.get("resolution", "")
+    timestamp    = data.get("timestamp", "")
+    content = f"Blocker on {site}: {blocker_type} — {resolution} (at {timestamp})"
+    mem_svc.save_memory(agent_id, content, mem_type="browser_blocker", importance=0.6)
 
 
 # ── Message router ─────────────────────────────────────────────────────────────

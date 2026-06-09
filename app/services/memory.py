@@ -1,6 +1,7 @@
 """Long-term memory via SQLite FTS5 with importance-weighted retrieval."""
 import sqlite3
 import logging
+import re
 from datetime import datetime
 from pathlib import Path
 
@@ -63,6 +64,13 @@ def save_memory(
 def get_relevant_memories(agent_id: str, query: str, limit: int = 5) -> list[str]:
     if not query.strip():
         return []
+    # Escape FTS5 special characters by wrapping in phrase quotes only when needed.
+    # This prevents syntax errors from punctuation like apostrophes, question marks,
+    # dots (domain names), and other FTS5 special characters.
+    if re.search(r"""['"?*+()\[\].]""", query):
+        escaped_query = '"' + query.replace('"', '""') + '"'
+    else:
+        escaped_query = query
     try:
         with _conn() as c:
             rows = c.execute("""
@@ -73,7 +81,7 @@ def get_relevant_memories(agent_id: str, query: str, limit: int = 5) -> list[str
                   AND  m.agent_id IN (?, 'shared')
                 ORDER  BY rank * m.importance
                 LIMIT  ?
-            """, (query, agent_id, limit)).fetchall()
+            """, (escaped_query, agent_id, limit)).fetchall()
             if rows:
                 now = datetime.now().isoformat()
                 ids = [r["id"] for r in rows]

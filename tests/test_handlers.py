@@ -76,3 +76,133 @@ def test_sing_pattern_matches_multiline():
     m = sing.PATTERN.search(sample)
     assert m is not None
     assert "bubbling" in m.group(1)
+
+
+@pytest.mark.asyncio
+async def test_browser_apply_handler_dispatches_and_returns_status(monkeypatch):
+    import asyncio
+    from app.output.handlers import browser_apply
+    send = AsyncMock()
+    dispatched = {}
+
+    async def fake_call_browser_svc(tool_type, tool_args):
+        dispatched["tool_type"] = tool_type
+        dispatched["tool_args"] = tool_args
+        return "[browser-svc: queued]"
+
+    monkeypatch.setattr(browser_apply, "call_browser_svc", fake_call_browser_svc)
+    text, bark_ok = await browser_apply.handle("https://linkedin.com/jobs/123", "maya", send)
+    await asyncio.sleep(0)
+
+    assert bark_ok is False
+    assert "https://linkedin.com/jobs/123" in text
+    assert dispatched == {"tool_type": "browser_apply", "tool_args": {"url": "https://linkedin.com/jobs/123"}}
+    send.assert_called_once()
+    assert send.call_args[0][0] == {
+        "type": "tool_call", "agent": "maya", "tool": "browser_apply",
+        "label": "Applying to job", "path": "https://linkedin.com/jobs/123",
+    }
+
+
+def test_browser_apply_pattern_matches_full_tag():
+    from app.output.handlers import browser_apply
+    sample = "[BROWSER_APPLY: https://linkedin.com/jobs/123]"
+    m = browser_apply.PATTERN.search(sample)
+    assert m is not None
+    assert m.group(1).strip() == "https://linkedin.com/jobs/123"
+
+
+@pytest.mark.asyncio
+async def test_browser_discover_handler_dispatches_parsed_args(monkeypatch):
+    import asyncio
+    from app.output.handlers import browser_discover
+    send = AsyncMock()
+    dispatched = {}
+
+    async def fake_call_browser_svc(tool_type, tool_args):
+        dispatched["tool_type"] = tool_type
+        dispatched["tool_args"] = tool_args
+        return "[browser-svc: queued]"
+
+    monkeypatch.setattr(browser_discover, "call_browser_svc", fake_call_browser_svc)
+    text, bark_ok = await browser_discover.handle("Python backend | linkedin | Bangalore", "maya", send)
+    await asyncio.sleep(0)
+
+    assert bark_ok is False
+    assert "Python backend" in text and "linkedin" in text and "Bangalore" in text
+    assert dispatched["tool_type"] == "browser_discover"
+    assert dispatched["tool_args"] == {
+        "keywords": "Python backend", "platform": "linkedin", "location": "Bangalore",
+    }
+    send.assert_called_once()
+    assert send.call_args[0][0]["tool"] == "browser_discover"
+
+
+def test_browser_discover_pattern_matches_full_tag():
+    from app.output.handlers import browser_discover
+    sample = "[BROWSER_DISCOVER: Python backend | linkedin | Bangalore]"
+    m = browser_discover.PATTERN.search(sample)
+    assert m is not None
+    assert "Python backend" in m.group(1)
+
+
+@pytest.mark.asyncio
+async def test_browser_company_handler_dispatches_and_returns_status(monkeypatch):
+    import asyncio
+    from app.output.handlers import browser_company
+    send = AsyncMock()
+    dispatched = {}
+
+    async def fake_call_browser_svc(tool_type, tool_args):
+        dispatched["tool_type"] = tool_type
+        dispatched["tool_args"] = tool_args
+        return "[browser-svc: queued]"
+
+    monkeypatch.setattr(browser_company, "call_browser_svc", fake_call_browser_svc)
+    text, bark_ok = await browser_company.handle("Stripe", "maya", send)
+    await asyncio.sleep(0)
+
+    assert bark_ok is False
+    assert "Stripe" in text
+    assert dispatched == {"tool_type": "browser_company", "tool_args": {"company": "Stripe"}}
+    send.assert_called_once()
+    assert send.call_args[0][0]["tool"] == "browser_company"
+
+
+def test_browser_company_pattern_matches_full_tag():
+    from app.output.handlers import browser_company
+    sample = "[BROWSER_COMPANY: Stripe]"
+    m = browser_company.PATTERN.search(sample)
+    assert m is not None
+    assert m.group(1).strip() == "Stripe"
+
+
+@pytest.mark.asyncio
+async def test_browser_profile_match_handler_dispatches_and_returns_status(monkeypatch):
+    import asyncio
+    from app.output.handlers import browser_profile_match
+    send = AsyncMock()
+    dispatched = {}
+
+    async def fake_call_browser_svc(tool_type, tool_args):
+        dispatched["tool_type"] = tool_type
+        dispatched["tool_args"] = tool_args
+        return "[browser-svc: queued]"
+
+    monkeypatch.setattr(browser_profile_match, "call_browser_svc", fake_call_browser_svc)
+    text, bark_ok = await browser_profile_match.handle("BROWSER_PROFILE_MATCH", "maya", send)
+    await asyncio.sleep(0)
+
+    assert bark_ok is False
+    assert "profile" in text.lower()
+    assert dispatched == {"tool_type": "browser_profile_match", "tool_args": {}}
+    send.assert_called_once()
+    assert send.call_args[0][0]["tool"] == "browser_profile_match"
+
+
+def test_browser_profile_match_pattern_matches_full_tag():
+    from app.output.handlers import browser_profile_match
+    sample = "[BROWSER_PROFILE_MATCH]"
+    m = browser_profile_match.PATTERN.search(sample)
+    assert m is not None
+    assert m.group(1) == "BROWSER_PROFILE_MATCH"

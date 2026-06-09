@@ -91,3 +91,10 @@ async def test_pipeline_empty_display_sends_nothing():
 
     assistant_calls = [c[0][0] for c in send.call_args_list if c[0][0].get("type") == "assistant"]
     assert len(assistant_calls) == 0
+
+
+def test_registry_includes_browser_tags():
+    from app.output import registry
+    registry._registry = None  # force a rebuild so the new imports are exercised
+    reg = registry.get_registry()
+    assert {"BROWSER_APPLY", "BROWSER_DISCOVER", "BROWSER_COMPANY", "BROWSER_PROFILE_MATCH"} <= reg.keys()

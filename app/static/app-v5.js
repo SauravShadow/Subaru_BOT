@@ -444,11 +444,13 @@ function showIsland(name) {
     if (!iframe.src || iframe.src === location.origin + "/") iframe.src = "/static/previews/index.html";
   }
   if (name === "browser") startBrowserAutoRefresh();
+  if (name === "board") startBoardStatusPolling();
 }
 
 function hideIsland(name) {
   $id(`island-${name}`).style.display = "none";
   if (name === "browser") stopBrowserAutoRefresh();
+  if (name === "board") stopBoardStatusPolling();
 }
 
 function initDraggableIslands() {
@@ -626,6 +628,14 @@ function dispatch(obj) {
 
     case "apply_result":
       logApplyResult(obj);
+      break;
+
+    case "browser_blocked":
+      pushNotif(`🧑‍💻 Slot ${obj.slot_id} needs you — ${obj.description || obj.blocker_type}`, "warn");
+      appendMsg("maya", "assistant",
+        `⚠️ I'm stuck on slot ${obj.slot_id} — ${obj.description}\n\n` +
+        `Open the Browser Board, click **Take over**, resolve it, then click **Resume** so I can continue from where I left off.`
+      );
       break;
 
     case "approval_requested":
@@ -1076,7 +1086,7 @@ document.addEventListener("DOMContentLoaded", () => {
 });
 
 // ── Browser Board ─────────────────────────────────────────────────────────────
-const _SLOT_LABELS = ["Overleaf (CV)", "Slot 1", "Slot 2", "Slot 3", "Slot 4"];
+const _SLOT_LABELS = ["Slot 0", "Slot 1", "Slot 2", "Slot 3"];
 const _boardTiles = {};
 
 function selectBoardSlot(slotId) {
@@ -1084,7 +1094,7 @@ function selectBoardSlot(slotId) {
   if (select) select.value = slotId;
   
   // Highlight the selected tile
-  for (let i = 0; i < 5; i++) {
+  for (let i = 0; i < 4; i++) {
     const tile = document.getElementById(`bframe-${i}`)?.parentElement;
     if (tile) {
       if (i === slotId) {
@@ -1100,7 +1110,7 @@ function selectBoardSlot(slotId) {
 
 function getSelectedBoardSlot() {
   const select = document.getElementById("board-slot-select");
-  return select ? parseInt(select.value) : 1;
+  return select ? parseInt(select.value) : 0;
 }
 
 async function boardNavigate() {
@@ -1157,9 +1167,9 @@ function initBrowserBoard() {
   const grid = document.getElementById("browser-board-grid");
   if (!grid || Object.keys(_boardTiles).length > 0) return;
   grid.style.cssText =
-    "display:grid;grid-template-columns:repeat(3,1fr);gap:6px;padding:8px;height:calc(100% - 72px);box-sizing:border-box";
+    "display:grid;grid-template-columns:repeat(2,1fr);gap:6px;padding:8px;height:calc(100% - 72px);box-sizing:border-box";
 
-  for (let i = 0; i < 5; i++) {
+  for (let i = 0; i < 4; i++) {
     const tile = document.createElement("div");
     tile.style.cssText =
       "position:relative;background:#0d1117;border:1px solid var(--border);border-radius:6px;overflow:hidden;cursor:pointer";
@@ -1169,9 +1179,12 @@ function initBrowserBoard() {
         `<span style="color:var(--muted);font-size:11px">${_SLOT_LABELS[i]}</span>` +
         `<span style="color:var(--border);font-size:9px">idle</span>` +
       `</div>` +
+      `<div id="bchip-${i}" style="position:absolute;top:4px;left:4px;padding:1px 6px;border-radius:3px;font-size:8px;font-weight:700;background:rgba(255,255,255,0.08);color:var(--muted)">idle</div>` +
       `<div id="bstatus-${i}" style="position:absolute;bottom:0;left:0;right:0;padding:3px 6px;background:rgba(0,0,0,0.75);font-size:9px;color:#00d4ff;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;display:none"></div>` +
-      `<div id="bbadge-${i}" style="position:absolute;top:4px;right:4px;padding:1px 5px;border-radius:3px;font-size:8px;font-weight:700;background:rgba(0,255,128,0.15);color:#0f0;display:none">LIVE</div>`;
-    
+      `<div id="bbadge-${i}" style="position:absolute;top:4px;right:4px;padding:1px 5px;border-radius:3px;font-size:8px;font-weight:700;background:rgba(0,255,128,0.15);color:#0f0;display:none">LIVE</div>` +
+      `<button id="bresume-${i}" style="position:absolute;bottom:4px;left:4px;padding:2px 8px;font-size:8px;font-weight:700;border-radius:3px;border:1px solid #ff66cc;background:rgba(255,102,204,0.12);color:#ff66cc;cursor:pointer;z-index:2;display:none">Resume</button>` +
+      `<button id="btakeover-${i}" style="position:absolute;bottom:4px;right:4px;padding:2px 8px;font-size:8px;font-weight:700;border-radius:3px;border:1px solid #00d4ff;background:rgba(0,212,255,0.12);color:#00d4ff;cursor:pointer;z-index:2">Take over</button>`;
+
     tile.addEventListener("click", e => {
       selectBoardSlot(i);
       const img = document.getElementById(`bframe-${i}`);
@@ -1183,7 +1196,7 @@ function initBrowserBoard() {
         const pctY = clickY / rect.height;
         const x = Math.round(pctX * 1280);
         const y = Math.round(pctY * 900);
-        
+
         fetch(`/api/browser-svc/slots/${i}/click`, {
           method: "POST",
           headers: {"Content-Type": "application/json"},
@@ -1192,12 +1205,32 @@ function initBrowserBoard() {
       }
     });
 
+    const takeoverBtn = tile.querySelector(`#btakeover-${i}`);
+    if (takeoverBtn) {
+      takeoverBtn.addEventListener("click", e => {
+        e.stopPropagation();
+        selectBoardSlot(i);
+        fetch(`/api/browser-svc/slots/${i}/ensure-interactive`, { method: "POST" });
+      });
+    }
+
+    const resumeBtn = tile.querySelector(`#bresume-${i}`);
+    if (resumeBtn) {
+      resumeBtn.addEventListener("click", e => {
+        e.stopPropagation();
+        fetch(`/api/browser-svc/slots/${i}/resume`, { method: "POST" });
+      });
+    }
+
     grid.appendChild(tile);
     _boardTiles[i] = {
       img: document.getElementById(`bframe-${i}`),
       idle: document.getElementById(`bidle-${i}`),
       status: document.getElementById(`bstatus-${i}`),
       badge: document.getElementById(`bbadge-${i}`),
+      chip: document.getElementById(`bchip-${i}`),
+      resumeBtn: document.getElementById(`bresume-${i}`),
+      lastFrameAt: null,
     };
   }
 
@@ -1211,17 +1244,19 @@ function initBrowserBoard() {
     boardTypeInput.addEventListener("keydown", e => { if (e.key === "Enter") boardType(); });
   }
 
-  // Log tile
+  // Log tile spans both columns of the 2×2 grid so 4 browser tiles + 1 log
+  // tile leave no awkward empty cell (was a clean 2×3 with 5 browser tiles;
+  // a plain 3-column grid with 4 would leave a gap).
   const logTile = document.createElement("div");
   logTile.style.cssText =
-    "background:#0d1117;border:1px solid var(--border);border-radius:6px;padding:8px;overflow-y:auto";
+    "background:#0d1117;border:1px solid var(--border);border-radius:6px;padding:8px;overflow-y:auto;grid-column:1 / -1";
   logTile.innerHTML =
     `<div style="font-size:10px;color:#00ff88;margin-bottom:4px;font-weight:600">Apply Log</div>` +
     `<div id="board-log" style="font-size:9px;color:var(--muted);display:flex;flex-direction:column;gap:3px"></div>`;
   grid.appendChild(logTile);
 
-  // Default select Slot 1
-  setTimeout(() => selectBoardSlot(1), 100);
+  // Default-select Slot 0 — it's a real browser slot now, not Overleaf/CV
+  setTimeout(() => selectBoardSlot(0), 100);
 }
 
 function handleBrowserFrame(obj) {
@@ -1236,11 +1271,75 @@ function handleBrowserFrame(obj) {
     tile.img.style.display = "block";
     tile.idle.style.display = "none";
     tile.badge.style.display = "block";
+    tile.lastFrameAt = Date.now();
   }
   const label = (obj.action ? obj.action + (obj.url ? "  —  " + obj.url : "") : obj.url) || "";
   if (label) {
     tile.status.textContent = label;
     tile.status.style.display = "block";
+  }
+}
+
+function _formatFrameAge(ms) {
+  if (ms == null) return "no frames yet";
+  const s = Math.round(ms / 1000);
+  if (s < 60) return `${s}s ago`;
+  return `${Math.round(s / 60)}m ago`;
+}
+
+// Combines browser-svc's polled slot state with frame-arrival recency into one
+// chip: "busy" + a frame within the last 5s reads as "streaming"; "busy" with
+// no recent frame reads as "connecting" — the stalled-stream signal the spec
+// wants visible even when the JPEG stream itself goes silent. An "awaiting
+// input" branch belongs here once Phase 4 (spec Section 3) defines the
+// escalation signal that would set it.
+function _computeSlotChip(backendState, lastFrameAt, blockedReason) {
+  const ageMs = lastFrameAt != null ? Date.now() - lastFrameAt : null;
+  if (blockedReason) {
+    const short = blockedReason.length > 36 ? blockedReason.slice(0, 36) + "…" : blockedReason;
+    return { text: `awaiting input · ${short}`, color: "#ff66cc" };
+  }
+  if (backendState === "error") return { text: "error", color: "#ff4444" };
+  if (backendState === "idle")  return { text: "idle",  color: "var(--muted)" };
+  if (ageMs == null || ageMs > 5000) {
+    return { text: `connecting · ${_formatFrameAge(ageMs)}`, color: "#ffaa00" };
+  }
+  return { text: `streaming · ${_formatFrameAge(ageMs)}`, color: "#00ff88" };
+}
+
+let _boardStatusInterval = null;
+
+async function pollBoardSlotStatuses() {
+  let slots;
+  try {
+    const r = await fetch("/api/browser-svc/slots");
+    if (!r.ok) return;
+    slots = await r.json();
+  } catch (e) {
+    return; // browser-svc unreachable this tick — chips simply hold their last value
+  }
+  for (const s of slots) {
+    const tile = _boardTiles[s.slot_id];
+    if (!tile || !tile.chip) continue;
+    const label = _computeSlotChip(s.state, tile.lastFrameAt, s.blocked_reason);
+    tile.chip.textContent = label.text;
+    tile.chip.style.color = label.color;
+    if (tile.resumeBtn) {
+      tile.resumeBtn.style.display = s.blocked_reason ? "block" : "none";
+    }
+  }
+}
+
+function startBoardStatusPolling() {
+  if (_boardStatusInterval) return;
+  pollBoardSlotStatuses();
+  _boardStatusInterval = setInterval(pollBoardSlotStatuses, 3000);
+}
+
+function stopBoardStatusPolling() {
+  if (_boardStatusInterval) {
+    clearInterval(_boardStatusInterval);
+    _boardStatusInterval = null;
   }
 }
 
