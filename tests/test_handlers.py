@@ -76,3 +76,37 @@ def test_sing_pattern_matches_multiline():
     m = sing.PATTERN.search(sample)
     assert m is not None
     assert "bubbling" in m.group(1)
+
+
+@pytest.mark.asyncio
+async def test_browser_apply_handler_dispatches_and_returns_status(monkeypatch):
+    import asyncio
+    from app.output.handlers import browser_apply
+    send = AsyncMock()
+    dispatched = {}
+
+    async def fake_call_browser_svc(tool_type, tool_args):
+        dispatched["tool_type"] = tool_type
+        dispatched["tool_args"] = tool_args
+        return "[browser-svc: queued]"
+
+    monkeypatch.setattr(browser_apply, "call_browser_svc", fake_call_browser_svc)
+    text, bark_ok = await browser_apply.handle("https://linkedin.com/jobs/123", "maya", send)
+    await asyncio.sleep(0)
+
+    assert bark_ok is False
+    assert "https://linkedin.com/jobs/123" in text
+    assert dispatched == {"tool_type": "browser_apply", "tool_args": {"url": "https://linkedin.com/jobs/123"}}
+    send.assert_called_once()
+    assert send.call_args[0][0] == {
+        "type": "tool_call", "agent": "maya", "tool": "browser_apply",
+        "label": "Applying to job", "path": "https://linkedin.com/jobs/123",
+    }
+
+
+def test_browser_apply_pattern_matches_full_tag():
+    from app.output.handlers import browser_apply
+    sample = "[BROWSER_APPLY: https://linkedin.com/jobs/123]"
+    m = browser_apply.PATTERN.search(sample)
+    assert m is not None
+    assert m.group(1).strip() == "https://linkedin.com/jobs/123"
