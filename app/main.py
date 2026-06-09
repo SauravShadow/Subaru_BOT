@@ -98,6 +98,8 @@ async def browser_relay_endpoint(ws: WebSocket):
                 break  # malformed JSON — disconnect
             if data.get("type") == "browser_result":
                 asyncio.create_task(ws_module.handle_browser_result(data))
+            elif data.get("type") == "browser_blocker_resolved":
+                asyncio.create_task(ws_module.handle_browser_blocker_resolved(data))
             else:
                 await broadcast_event(data)
     except Exception:

@@ -36,3 +36,26 @@ async def test_handle_browser_result_records_and_reinvokes_agent():
     broadcast_types = [c.args[0]["type"] for c in mock_broadcast.call_args_list]
     assert "thinking" in broadcast_types
     assert "done" in broadcast_types
+
+
+@pytest.mark.asyncio
+async def test_handle_browser_blocker_resolved_persists_a_retrievable_memory(tmp_path):
+    from app.api import websocket as ws_module
+    from app.services import memory as mem_svc
+
+    original_db = mem_svc.DB_PATH
+    mem_svc.DB_PATH = tmp_path / "test_memory.db"
+    mem_svc.init_db()
+    try:
+        await ws_module.handle_browser_blocker_resolved({
+            "type": "browser_blocker_resolved",
+            "agent_id": "maya",
+            "site": "naukri.com",
+            "blocker_type": "login_wall",
+            "resolution": "user took over in interactive mode and resumed manually",
+            "timestamp": "2026-06-08T10:00:00",
+        })
+        results = mem_svc.get_relevant_memories("maya", "naukri.com login wall")
+        assert any("naukri.com" in r and "login_wall" in r for r in results)
+    finally:
+        mem_svc.DB_PATH = original_db

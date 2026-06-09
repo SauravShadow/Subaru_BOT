@@ -65,9 +65,9 @@ def get_relevant_memories(agent_id: str, query: str, limit: int = 5) -> list[str
     if not query.strip():
         return []
     # Escape FTS5 special characters by wrapping in phrase quotes only when needed.
-    # This prevents syntax errors from punctuation like apostrophes and question marks
-    # while maintaining original OR semantics for safe queries.
-    if re.search(r"""['"?*+()\[\]]""", query):
+    # This prevents syntax errors from punctuation like apostrophes, question marks,
+    # dots (domain names), and other FTS5 special characters.
+    if re.search(r"""['"?*+()\[\].]""", query):
         escaped_query = '"' + query.replace('"', '""') + '"'
     else:
         escaped_query = query
