@@ -182,10 +182,16 @@ async def _run_worker_bg(
                 )
 
 
-async def handle_browser_result(data: dict) -> None:
+async def handle_browser_result(data: dict, model: str = "claude") -> None:
     """Feed a completed browser-svc task back into the originating worker's
     conversation, mirroring _run_worker_bg's record → run_agent → record sequence
-    so the worker is grounded in a real result instead of narrating unconfirmed claims."""
+    so the worker is grounded in a real result instead of narrating unconfirmed claims.
+
+    The ``model`` parameter is forwarded to run_agent so that re-invocations honour
+    the session's active backend (e.g. gemini) rather than always defaulting to the
+    classification path.  The caller (browser_relay_endpoint) reads the model from
+    any live frontend session so explicit overrides are preserved.
+    """
     agent_id   = data.get("agent_id", "maya")
     slot_id    = data.get("slot_id")
     tool       = data.get("tool", "browser action")
@@ -200,7 +206,7 @@ async def handle_browser_result(data: dict) -> None:
 
     await broadcast_event({"type": "thinking", "agent": agent_id})
     state.record(agent_id, "user", task_text)
-    full_resp = await run_agent(agent_id, task_text, send)
+    full_resp = await run_agent(agent_id, task_text, send, model)
     state.record(agent_id, "assistant", deleg_svc.clean_response(full_resp))
     await broadcast_event({"type": "done", "agent": agent_id})
 
