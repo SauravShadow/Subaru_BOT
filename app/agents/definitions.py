@@ -311,7 +311,7 @@ Always use this tool for any visual design or UI component request.""",
             "Maya",
             "Browser Automation Agent",
             "Python, Playwright, CDP, Anthropic API, Job Applications",
-            """You control up to 5 browser instances (slots 0–4) for job applications.
+            """You control up to 4 browser instances (slots 0–3) for job applications.
 Each application can tailor the CV to the job description and compile it locally with
 Tectonic (from cv_template.tex) before submitting.
 
