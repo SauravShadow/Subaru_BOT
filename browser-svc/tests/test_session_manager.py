@@ -66,3 +66,46 @@ async def test_status_returns_four_dicts(sm):
     assert len(statuses) == 4
     for s in statuses:
         assert "slot_id" in s and "state" in s and "url" in s and "action" in s
+
+
+@pytest.mark.asyncio
+async def test_mark_blocked_sets_reason_and_clears_resume_event(sm):
+    slot = await sm.acquire(0)
+    slot.resume_event.set()
+    await sm.mark_blocked(0, "Naukri is showing a login page")
+    assert sm._slots[0].blocked_reason == "Naukri is showing a login page"
+    assert not sm._slots[0].resume_event.is_set()
+
+
+@pytest.mark.asyncio
+async def test_resume_clears_reason_and_sets_event(sm):
+    await sm.acquire(0)
+    await sm.mark_blocked(0, "Captcha on LinkedIn")
+    resumed = sm.resume(0)
+    assert resumed is True
+    assert sm._slots[0].blocked_reason == ""
+    assert sm._slots[0].resume_event.is_set()
+
+
+@pytest.mark.asyncio
+async def test_resume_returns_false_when_slot_is_not_blocked(sm):
+    await sm.acquire(0)
+    assert sm.resume(0) is False
+
+
+@pytest.mark.asyncio
+async def test_status_reports_blocked_reason(sm):
+    await sm.acquire(0)
+    await sm.mark_blocked(0, "Login wall on naukri.com")
+    statuses = sm.status()
+    assert statuses[0]["blocked_reason"] == "Login wall on naukri.com"
+    assert statuses[1]["blocked_reason"] == ""
+
+
+@pytest.mark.asyncio
+async def test_release_clears_blocked_state(sm):
+    await sm.acquire(0)
+    await sm.mark_blocked(0, "Captcha on LinkedIn")
+    await sm.release(0)
+    assert sm._slots[0].blocked_reason == ""
+    assert sm._slots[0].resume_event.is_set() is False
