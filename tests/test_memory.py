@@ -70,3 +70,9 @@ def test_get_relevant_memories_handles_punctuated_query(mem):
     mem.save_memory("maya", "Applied to Stripe's backend role")
     results = mem.get_relevant_memories("maya", "Stripe's backend role?")
     assert any("Stripe" in r for r in results)
+
+
+def test_get_relevant_memories_handles_fts5_operator_characters(mem):
+    mem.save_memory("maya", "Looking for C++ backend engineers in Bangalore")
+    results = mem.get_relevant_memories("maya", "C++ backend")
+    assert any("C++" in r for r in results)
