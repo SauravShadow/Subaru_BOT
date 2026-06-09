@@ -35,3 +35,27 @@ def test_start_creates_task():
             pass
 
     asyncio.run(_run())
+
+
+def test_relay_client_configures_logging_handler():
+    import logging
+    import importlib
+    import sys
+
+    # Remove relay_client from sys.modules to simulate fresh import
+    if 'relay_client' in sys.modules:
+        del sys.modules['relay_client']
+
+    # Create a fresh logging environment
+    root_logger = logging.getLogger()
+    # Remove any existing handlers from root logger
+    for handler in root_logger.handlers[:]:
+        root_logger.removeHandler(handler)
+
+    # Now import and verify relay_client configures logging
+    import relay_client
+
+    assert logging.getLogger().handlers, (
+        "relay_client must call logging.basicConfig so its logger.info/warning "
+        "calls are emitted to docker logs"
+    )
