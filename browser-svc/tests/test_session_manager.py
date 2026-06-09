@@ -70,10 +70,11 @@ async def test_status_returns_four_dicts(sm):
 
 @pytest.mark.asyncio
 async def test_mark_blocked_sets_reason_and_clears_resume_event(sm):
-    slot = await sm.acquire(0)
-    slot.resume_event.set()
+    await sm.acquire(0)
+    # mark_blocked lazily creates the Event and clears it
     await sm.mark_blocked(0, "Naukri is showing a login page")
     assert sm._slots[0].blocked_reason == "Naukri is showing a login page"
+    assert sm._slots[0].resume_event is not None
     assert not sm._slots[0].resume_event.is_set()
 
 

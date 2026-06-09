@@ -19,7 +19,7 @@ class SlotInfo:
     url: str = ""
     action: str = ""
     blocked_reason: str = ""
-    resume_event: asyncio.Event = field(default_factory=asyncio.Event, repr=False)
+    resume_event: asyncio.Event = field(default=None, repr=False)
     context: Optional[BrowserContext] = field(default=None, repr=False)
     page: Optional[Page] = field(default=None, repr=False)
     cdp_session: Optional[object] = field(default=None, repr=False)
@@ -88,7 +88,8 @@ class SessionManager:
             slot.url = ""
             slot.action = ""
             slot.blocked_reason = ""
-            slot.resume_event.clear()
+            if slot.resume_event is not None:
+                slot.resume_event.clear()
 
     def status(self) -> list[dict]:
         return [
@@ -105,18 +106,23 @@ class SessionManager:
     async def mark_blocked(self, slot_id: int, reason: str) -> None:
         async with self._lock:
             slot = self._slots[slot_id]
+            if slot.resume_event is None:
+                slot.resume_event = asyncio.Event()
             slot.blocked_reason = reason
             slot.resume_event.clear()
 
     async def wait_for_resume(self, slot_id: int) -> None:
-        await self._slots[slot_id].resume_event.wait()
+        evt = self._slots[slot_id].resume_event
+        if evt is not None:
+            await evt.wait()
 
     def resume(self, slot_id: int) -> bool:
         slot = self._slots[slot_id]
         if not slot.blocked_reason:
             return False
         slot.blocked_reason = ""
-        slot.resume_event.set()
+        if slot.resume_event is not None:
+            slot.resume_event.set()
         return True
 
     async def _start_screencast_unlocked(self, slot_id: int, relay) -> None:
