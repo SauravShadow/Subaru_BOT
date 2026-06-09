@@ -158,7 +158,7 @@
   <img id="browser-screenshot" src="" alt="Browser screenshot" style="display:block">
 </div>
 
-<!-- Browser Board island — live view of all 5 Maya browser slots -->
+<!-- Browser Board island — live view of all 4 Maya browser slots -->
 <div class="island island-board" id="island-board" style="display:none">
   <div class="island-header" id="island-board-header">
     Browser Board — Maya
@@ -173,11 +173,10 @@
   <div class="browser-board-controls" style="display:flex;gap:8px;padding:6px 10px;background:var(--bg-elevated);border-bottom:1px solid var(--border);align-items:center;flex-wrap:wrap">
     <span style="color:#00ff88;font-size:11px;font-weight:600">Interact:</span>
     <select id="board-slot-select" onchange="selectBoardSlot(parseInt(this.value))" style="background:var(--bg);color:var(--text);border:1px solid var(--border);border-radius:4px;font-size:11px;padding:2px 4px">
-      <option value="0">Overleaf (CV)</option>
-      <option value="1" selected>Slot 1</option>
+      <option value="0" selected>Slot 0</option>
+      <option value="1">Slot 1</option>
       <option value="2">Slot 2</option>
       <option value="3">Slot 3</option>
-      <option value="4">Slot 4</option>
     </select>
     <input type="text" id="board-url-input" placeholder="Navigate URL..." style="flex:1;min-width:100px;background:var(--bg);border:1px solid var(--border);color:var(--text);padding:3px 6px;border-radius:4px;font-size:11px">
     <button class="btn-run" onclick="boardNavigate()" style="padding:2px 8px;font-size:11px">Go</button>

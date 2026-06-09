@@ -1076,7 +1076,7 @@ document.addEventListener("DOMContentLoaded", () => {
 });
 
 // ── Browser Board ─────────────────────────────────────────────────────────────
-const _SLOT_LABELS = ["Overleaf (CV)", "Slot 1", "Slot 2", "Slot 3", "Slot 4"];
+const _SLOT_LABELS = ["Slot 0", "Slot 1", "Slot 2", "Slot 3"];
 const _boardTiles = {};
 
 function selectBoardSlot(slotId) {
@@ -1084,7 +1084,7 @@ function selectBoardSlot(slotId) {
   if (select) select.value = slotId;
   
   // Highlight the selected tile
-  for (let i = 0; i < 5; i++) {
+  for (let i = 0; i < 4; i++) {
     const tile = document.getElementById(`bframe-${i}`)?.parentElement;
     if (tile) {
       if (i === slotId) {
@@ -1100,7 +1100,7 @@ function selectBoardSlot(slotId) {
 
 function getSelectedBoardSlot() {
   const select = document.getElementById("board-slot-select");
-  return select ? parseInt(select.value) : 1;
+  return select ? parseInt(select.value) : 0;
 }
 
 async function boardNavigate() {
@@ -1157,9 +1157,9 @@ function initBrowserBoard() {
   const grid = document.getElementById("browser-board-grid");
   if (!grid || Object.keys(_boardTiles).length > 0) return;
   grid.style.cssText =
-    "display:grid;grid-template-columns:repeat(3,1fr);gap:6px;padding:8px;height:calc(100% - 72px);box-sizing:border-box";
+    "display:grid;grid-template-columns:repeat(2,1fr);gap:6px;padding:8px;height:calc(100% - 72px);box-sizing:border-box";
 
-  for (let i = 0; i < 5; i++) {
+  for (let i = 0; i < 4; i++) {
     const tile = document.createElement("div");
     tile.style.cssText =
       "position:relative;background:#0d1117;border:1px solid var(--border);border-radius:6px;overflow:hidden;cursor:pointer";
@@ -1171,7 +1171,7 @@ function initBrowserBoard() {
       `</div>` +
       `<div id="bstatus-${i}" style="position:absolute;bottom:0;left:0;right:0;padding:3px 6px;background:rgba(0,0,0,0.75);font-size:9px;color:#00d4ff;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;display:none"></div>` +
       `<div id="bbadge-${i}" style="position:absolute;top:4px;right:4px;padding:1px 5px;border-radius:3px;font-size:8px;font-weight:700;background:rgba(0,255,128,0.15);color:#0f0;display:none">LIVE</div>`;
-    
+
     tile.addEventListener("click", e => {
       selectBoardSlot(i);
       const img = document.getElementById(`bframe-${i}`);
@@ -1183,7 +1183,7 @@ function initBrowserBoard() {
         const pctY = clickY / rect.height;
         const x = Math.round(pctX * 1280);
         const y = Math.round(pctY * 900);
-        
+
         fetch(`/api/browser-svc/slots/${i}/click`, {
           method: "POST",
           headers: {"Content-Type": "application/json"},
@@ -1211,17 +1211,19 @@ function initBrowserBoard() {
     boardTypeInput.addEventListener("keydown", e => { if (e.key === "Enter") boardType(); });
   }
 
-  // Log tile
+  // Log tile spans both columns of the 2×2 grid so 4 browser tiles + 1 log
+  // tile leave no awkward empty cell (was a clean 2×3 with 5 browser tiles;
+  // a plain 3-column grid with 4 would leave a gap).
   const logTile = document.createElement("div");
   logTile.style.cssText =
-    "background:#0d1117;border:1px solid var(--border);border-radius:6px;padding:8px;overflow-y:auto";
+    "background:#0d1117;border:1px solid var(--border);border-radius:6px;padding:8px;overflow-y:auto;grid-column:1 / -1";
   logTile.innerHTML =
     `<div style="font-size:10px;color:#00ff88;margin-bottom:4px;font-weight:600">Apply Log</div>` +
     `<div id="board-log" style="font-size:9px;color:var(--muted);display:flex;flex-direction:column;gap:3px"></div>`;
   grid.appendChild(logTile);
 
-  // Default select Slot 1
-  setTimeout(() => selectBoardSlot(1), 100);
+  // Default-select Slot 0 — it's a real browser slot now, not Overleaf/CV
+  setTimeout(() => selectBoardSlot(0), 100);
 }
 
 function handleBrowserFrame(obj) {
