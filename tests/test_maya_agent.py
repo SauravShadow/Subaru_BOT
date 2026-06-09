@@ -116,3 +116,13 @@ async def test_call_browser_svc_slot_busy_409():
         result = await call_browser_svc("browser_apply", {"url": "https://test.com"})
 
     assert "slot busy" in result
+
+
+@pytest.mark.asyncio
+async def test_call_browser_svc_omits_slot_id_so_server_can_autopick():
+    from app.services.browser_svc import _PAYLOAD_MAP
+
+    assert "slot_id" not in _PAYLOAD_MAP["browser_apply"]({"url": "https://test.com"})
+    assert "slot_id" not in _PAYLOAD_MAP["browser_discover"]({"keywords": "Python"})
+    assert "slot_id" not in _PAYLOAD_MAP["browser_company"]({"company": "Stripe"})
+    assert "slot_id" not in _PAYLOAD_MAP["browser_profile_match"]({})

@@ -11,16 +11,15 @@ _ENDPOINT_MAP = {
 }
 
 _PAYLOAD_MAP = {
-    "browser_apply":         lambda a: {"url": a.get("url", ""), "slot_id": 1, "tailor_cv": True},
+    "browser_apply":         lambda a: {"url": a.get("url", ""), "tailor_cv": True},
     "browser_discover":      lambda a: {
         "keywords": a.get("keywords", ""),
         "platform": a.get("platform", "linkedin"),
         "location": a.get("location", "Bangalore"),
-        "slot_id": 1,
         "tailor_cv": True,
     },
-    "browser_company":       lambda a: {"company": a.get("company", ""), "slot_id": 1, "tailor_cv": True},
-    "browser_profile_match": lambda a: {"slot_id": 1, "tailor_cv": True},
+    "browser_company":       lambda a: {"company": a.get("company", ""), "tailor_cv": True},
+    "browser_profile_match": lambda a: {"tailor_cv": True},
 }
 
 
