@@ -78,3 +78,50 @@ def test_load_profile_reads_json(tmp_path):
     result = jw.load_profile()
     jw.PROFILE_PATH = original
     assert result["name"] == "Test User"
+
+
+from unittest.mock import AsyncMock
+
+
+@pytest.mark.asyncio
+async def test_detect_blocker_recognizes_captcha_selector():
+    from job_workflow import detect_blocker
+
+    page = AsyncMock()
+    page.url = "https://example.com/apply"
+    page.inner_text = AsyncMock(return_value="")
+    locator_mock = MagicMock()
+    locator_mock.first.is_visible = AsyncMock(return_value=True)
+    page.locator = MagicMock(return_value=locator_mock)
+
+    blocker = await detect_blocker(page)
+    assert blocker == {"blocker_type": "captcha", "description": "Captcha challenge on https://example.com/apply"}
+
+
+@pytest.mark.asyncio
+async def test_detect_blocker_recognizes_login_wall_text():
+    from job_workflow import detect_blocker
+
+    page = AsyncMock()
+    page.url = "https://naukri.com/jobs/123"
+    page.inner_text = AsyncMock(return_value="Please log in to view this job posting")
+    locator_mock = MagicMock()
+    locator_mock.first.is_visible = AsyncMock(return_value=False)
+    page.locator = MagicMock(return_value=locator_mock)
+
+    blocker = await detect_blocker(page)
+    assert blocker == {"blocker_type": "login_wall", "description": "Login wall on https://naukri.com/jobs/123"}
+
+
+@pytest.mark.asyncio
+async def test_detect_blocker_returns_none_when_page_is_clean():
+    from job_workflow import detect_blocker
+
+    page = AsyncMock()
+    page.url = "https://example.com/jobs/456"
+    page.inner_text = AsyncMock(return_value="Senior Backend Engineer — apply below")
+    locator_mock = MagicMock()
+    locator_mock.first.is_visible = AsyncMock(return_value=False)
+    page.locator = MagicMock(return_value=locator_mock)
+
+    assert await detect_blocker(page) is None

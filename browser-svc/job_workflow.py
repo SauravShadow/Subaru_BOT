@@ -158,6 +158,67 @@ async def attach_cv(page: "Page", cv_path: str) -> bool:
     return False
 
 
+# ── Blocker detection ─────────────────────────────────────────────────────────
+
+_CAPTCHA_SELECTORS = [
+    "iframe[src*='recaptcha']",
+    "iframe[title*='challenge']",
+    "[class*='captcha']",
+    "#captcha",
+]
+_CAPTCHA_TEXT_PATTERNS = [
+    r"(?i)verify you('re| are) human",
+    r"(?i)i'?m not a robot",
+    r"(?i)complete the (security check|captcha)",
+]
+_LOGIN_WALL_SELECTORS = [
+    "input[type='password']",
+    "form[action*='login']",
+    "form[action*='signin']",
+]
+_LOGIN_WALL_TEXT_PATTERNS = [
+    r"(?i)sign in to continue",
+    r"(?i)log ?in to (view|continue|apply)",
+    r"(?i)please log ?in",
+]
+
+
+async def _any_visible(page: "Page", selectors: list[str]) -> bool:
+    for selector in selectors:
+        try:
+            if await page.locator(selector).first.is_visible(timeout=500):
+                return True
+        except Exception:
+            continue
+    return False
+
+
+def _any_match(text: str, patterns: list[str]) -> bool:
+    return any(re.search(pattern, text) for pattern in patterns)
+
+
+async def detect_blocker(page: "Page") -> Optional[dict]:
+    """Classify a blocking condition on the current page, if any.
+
+    Returns {"blocker_type": "captcha"|"login_wall", "description": "..."} or
+    None. Captcha is checked first — a captcha overlay can sit on top of what
+    would otherwise look like a login form, and misclassifying it as a login
+    wall would send a human toward the wrong remedy.
+    """
+    try:
+        body_text = (await page.inner_text("body"))[:4000]
+    except Exception:
+        body_text = ""
+
+    if await _any_visible(page, _CAPTCHA_SELECTORS) or _any_match(body_text, _CAPTCHA_TEXT_PATTERNS):
+        return {"blocker_type": "captcha", "description": f"Captcha challenge on {page.url}"}
+
+    if await _any_visible(page, _LOGIN_WALL_SELECTORS) or _any_match(body_text, _LOGIN_WALL_TEXT_PATTERNS):
+        return {"blocker_type": "login_wall", "description": f"Login wall on {page.url}"}
+
+    return None
+
+
 # ── LinkedIn Easy Apply ───────────────────────────────────────────────────────
 
 async def _apply_linkedin_easy(page: "Page", profile: dict, cv_path: str) -> bool:
