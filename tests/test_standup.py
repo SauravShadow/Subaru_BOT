@@ -4,26 +4,20 @@ from unittest.mock import AsyncMock, patch, MagicMock
 
 @pytest.mark.asyncio
 async def test_generate_standup_prompt_contains_sections():
-    """Standup prompt must include all three state sections."""
+    """Standup prompt must include project names and section headers."""
     from app.services.standup import generate_standup_prompt
 
     mock_state = MagicMock()
     mock_state.load_projects.return_value = [
         {"name": "TradingBot", "status": "active"}
     ]
-    mock_state.work_queue = [
-        {"agent": "backend", "task": "Fix auth bug", "status": "pending"}
-    ]
-    mock_state.task_history = [
-        {"summary": "Deployed new UI", "status": "completed"}
-    ]
 
     with patch("app.services.standup.state", mock_state):
         prompt = await generate_standup_prompt()
 
     assert "TradingBot" in prompt
-    assert "Fix auth bug" in prompt
-    assert "Deployed new UI" in prompt
+    assert "ACTIVE PROJECTS" in prompt
+    assert "PENDING QUEUE" in prompt
 
 
 @pytest.mark.asyncio

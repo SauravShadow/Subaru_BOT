@@ -126,7 +126,6 @@ def _auto_compact_history(agent_id: str) -> bool:
                 pass
 
     state.conversation_histories[agent_id] = history[-config.COMPACT_KEEP :]
-    state.save_state()
     logger.info(
         "Auto-compacted %d messages for agent '%s' (kept last %d)",
         len(to_archive), agent_id, config.COMPACT_KEEP,
@@ -139,13 +138,10 @@ def _build_context_block(agent_id: str, user_query: str) -> str:
     try:
         import datetime as _dt
         memories  = mem_svc.get_relevant_memories(agent_id, user_query, limit=5)
-        queue     = [i for i in state.work_queue if i.get("status") != "completed"][-3:]
         now_str   = _dt.datetime.now(_IST).strftime("%A %d %B %Y, %H:%M IST")
         mem_lines = "\n".join(f"  - {m}" for m in memories) or "  (none yet)"
-        queue_str = json.dumps(queue, indent=2) if queue else "  []"
         return (
             f"\nLIVE CONTEXT [{now_str}]:\n"
-            f"Active tasks:\n{queue_str}\n"
             f"Relevant memories:\n{mem_lines}\n"
         )
     except Exception:
@@ -334,10 +330,6 @@ async def run_tgpt_agent(
             break
 
         if tool_type == "done":
-            summary   = tool_args.get("summary", "Task completed.")
-            state.complete_work_item(
-                state.active_agent_tasks.get(agent_id, -1), summary
-            )
             break
 
         # Execute tool

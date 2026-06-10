@@ -3,7 +3,8 @@ Agent definitions and persona builders.
 All AGENT_DEFS and helper lookups live here.
 """
 from app import config
-from app.state.manager import custom_agents
+
+custom_agents: dict = {}
 
 # ── Personas ───────────────────────────────────────────────────────────────────
 

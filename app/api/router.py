@@ -64,39 +64,35 @@ async def api_new_project(body: dict):
 
 @router.get("/api/workqueue")
 async def api_wq():
-    return state.work_queue
+    return []
 
 
 @router.post("/api/workqueue/{item_id}/complete")
 async def api_complete_item(item_id: int, body: dict):
-    summary = body.get("summary", "Task completed.")
-    item    = state.complete_work_item(item_id, summary)
-    return {"ok": bool(item)}
+    return {"ok": False, "error": "work queue replaced by LangGraph"}
 
 
 @router.post("/api/workqueue/{item_id}/force-complete")
 async def api_force_complete(item_id: int):
-    item = state.force_complete_item(item_id)
-    return {"ok": bool(item)}
+    return {"ok": False, "error": "work queue replaced by LangGraph"}
 
 
 @router.post("/api/workqueue/{item_id}/reset")
 async def api_reset_item(item_id: int):
-    item = state.reset_work_item(item_id)
-    return {"ok": bool(item)}
+    return {"ok": False, "error": "work queue replaced by LangGraph"}
 
 
 @router.post("/api/hire")
 async def api_hire(body: dict):
-    from app.agents.definitions import _worker_persona, AGENT_DEFS
-    aid  = body.get("id", f"agent_{len(state.custom_agents) + 1}")
+    from app.agents.definitions import _worker_persona, AGENT_DEFS, custom_agents
+    aid  = body.get("id", f"agent_{len(custom_agents) + 1}")
 
     # Prevent overwriting built-in agents
     if aid in AGENT_DEFS:
         return {"ok": False, "error": f"Agent id '{aid}' is reserved for a built-in agent."}
 
     role = body.get("role", "Specialist")
-    state.custom_agents[aid] = {
+    custom_agents[aid] = {
         "name":        body.get("name", "Contractor"),
         "title":       body.get("title", role),
         "color":       body.get("color", "#94a3b8"),
@@ -106,20 +102,18 @@ async def api_hire(body: dict):
                                        body.get("stack", "general purpose"), "")(),
     }
     state.conversation_histories[aid] = []
-    state.save_state()
     return {"ok": True, "id": aid}
 
 
 @router.delete("/api/hire/{agent_id}")
 async def api_fire(agent_id: str):
-    from app.agents.definitions import AGENT_DEFS
+    from app.agents.definitions import AGENT_DEFS, custom_agents
     if agent_id in AGENT_DEFS:
         return {"ok": False, "error": "Cannot remove a built-in agent."}
-    if agent_id not in state.custom_agents:
+    if agent_id not in custom_agents:
         return {"ok": False, "error": "Agent not found."}
-    del state.custom_agents[agent_id]
+    del custom_agents[agent_id]
     state.conversation_histories.pop(agent_id, None)
-    state.save_state()
     return {"ok": True}
 
 
@@ -135,19 +129,12 @@ async def api_email_inbox(max_emails: int = 5, folder: str = "INBOX", unread_onl
 
 @router.get("/api/email-tasks")
 async def api_email_tasks():
-    tasks = list(state.email_tasks.values())
-    # Sort newest first
-    tasks.sort(key=lambda t: t.get("updated", ""), reverse=True)
-    # Strip large body fields to keep payload lean
-    return [
-        {k: v for k, v in t.items() if k not in ("body", "execution_result", "sent_message_ids")}
-        for t in tasks
-    ]
+    return []
 
 
 @router.get("/api/task-history")
 async def api_task_history():
-    return list(reversed(state.task_history))  # newest first
+    return []
 
 
 @router.get("/api/ceo-sessions")
@@ -197,18 +184,16 @@ async def api_ceo_sessions():
 
 @router.get("/api/email-tasks/{task_id}")
 async def api_email_task_detail(task_id: str):
-    import urllib.parse
-    tid = urllib.parse.unquote(task_id)
-    task = state.email_tasks.get(tid)
-    if not task:
-        return JSONResponse({"error": "not found"}, status_code=404)
-    return task
+    return JSONResponse({"error": "not found"}, status_code=404)
 
 
 @router.post("/api/email-tasks/poll")
-async def api_email_tasks_poll():
+async def api_email_tasks_poll(request: Request):
     from app.services import email_poller
-    asyncio.create_task(email_poller.poll_once())
+    email_graph = getattr(request.app.state, "email_graph", None)
+    if email_graph is None:
+        return JSONResponse({"ok": False, "error": "email_graph not ready"}, status_code=503)
+    asyncio.create_task(email_poller.poll_once(email_graph))
     return {"ok": True, "message": "Poll triggered"}
 
 

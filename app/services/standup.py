@@ -18,19 +18,13 @@ logger = logging.getLogger(__name__)
 async def generate_standup_prompt() -> str:
     """Build the CEO standup prompt from live system state."""
     projects   = state.load_projects()
-    queue      = [i for i in state.work_queue if i.get("status") != "completed"]
-    history    = state.task_history[-5:]
     now_str    = datetime.now().strftime("%A, %d %B %Y")
 
     proj_lines  = "\n".join(
         f"  - {p.get('name', '?')}: {p.get('status', '?')}" for p in projects
     ) or "  (none active)"
-    queue_lines = "\n".join(
-        f"  - [{i['agent']}] {i['task']} ({i['status']})" for i in queue
-    ) or "  (queue empty)"
-    done_lines  = "\n".join(
-        f"  - {h.get('summary', '')}" for h in reversed(history)
-    ) or "  (no recent completions)"
+    queue_lines = "  (queue empty)"
+    done_lines  = "  (no recent completions)"
 
     return f"""You are Subaru, the AI command center for Shadow Garden.
 Today is {now_str}.
