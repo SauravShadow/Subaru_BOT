@@ -1,20 +1,16 @@
-"""
-Shadow Garden — FastAPI application factory.
-Initialises the app, mounts static files, registers routes and WS endpoint.
-"""
+# app/main.py
+"""Shadow Garden — FastAPI application factory with LangGraph lifespan."""
+import asyncio
 import logging
 import os
+from contextlib import asynccontextmanager
 from pathlib import Path
-
-import asyncio
-from typing import Optional
 
 from fastapi import FastAPI, WebSocket, Query
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.websockets import WebSocketDisconnect
 
-from app.state.manager import load_state
 from app.api import router as api_router_module
 from app.api import websocket as ws_module
 from app.api.websocket import broadcast_event
@@ -24,66 +20,52 @@ logging.basicConfig(
     format="%(asctime)s %(levelname)-8s %(name)s — %(message)s",
 )
 
-app = FastAPI(title="Shadow Garden Command Center")
-
 STATIC_DIR = Path(__file__).parent / "static"
 
-_poller_task: Optional[asyncio.Task] = None
 
-
-# ── Startup / Shutdown ─────────────────────────────────────────────────────────
-
-@app.on_event("startup")
-async def on_startup():
-    global _poller_task
-    load_state()
-
-    # Initialize memory database
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    # DB + memory
     from app.services import memory as mem_svc
     mem_svc.init_db()
 
-    # Load all skills (core metadata + learned handlers)
+    # Skills
     from app.skills import skill_loader
     skill_loader.load_all()
 
-    # Build email_graph and start background services
-    from langgraph.checkpoint.memory import MemorySaver
+    # LangGraph checkpointer + graphs
+    from app.graph.checkpointer import get_checkpointer
+    from app.graph.nexus_graph import build_nexus_graph
     from app.graph.email.graph import build_email_graph
+
+    cp = await get_checkpointer()
+    app.state.nexus_graph = build_nexus_graph(cp)
+    app.state.email_graph = build_email_graph(cp)
+
+    # Background services
     from app.services import email_poller, scheduler
-    _email_graph = build_email_graph(MemorySaver())
-    _poller_task = asyncio.create_task(email_poller.start(_email_graph))
+    asyncio.create_task(email_poller.start(app.state.email_graph))
     asyncio.create_task(scheduler.start_scheduler_loop())
 
+    yield
 
-@app.on_event("shutdown")
-async def on_shutdown():
-    global _poller_task
-    if _poller_task and not _poller_task.done():
-        _poller_task.cancel()
-        try:
-            await asyncio.wait_for(asyncio.shield(_poller_task), timeout=3.0)
-        except (asyncio.CancelledError, asyncio.TimeoutError):
-            pass
+    from app.graph.checkpointer import close_checkpointer
+    await close_checkpointer()
 
 
-# ── REST routes ────────────────────────────────────────────────────────────────
+app = FastAPI(title="Shadow Garden Command Center", lifespan=lifespan)
 
 app.include_router(api_router_module.router)
 
-
-# ── WebSocket ──────────────────────────────────────────────────────────────────
 
 @app.websocket("/ws")
 async def websocket_endpoint(ws: WebSocket, model: str = Query(default="claude")):
     await ws_module.ws_endpoint(ws, model)
 
 
-logger = logging.getLogger(__name__)
-
-
 @app.websocket("/ws/browser-relay")
 async def browser_relay_endpoint(ws: WebSocket):
-    """Receives browser_frame events from browser-svc and broadcasts to all frontend sessions."""
+    """Receives browser_frame events from browser-svc."""
     secret = os.environ.get("BROWSER_RELAY_SECRET", "")
     if secret:
         auth = ws.headers.get("authorization", "")
@@ -98,23 +80,17 @@ async def browser_relay_endpoint(ws: WebSocket):
             except WebSocketDisconnect:
                 break
             except Exception:
-                break  # malformed JSON — disconnect
+                break
             if data.get("type") == "browser_result":
-                # Forward the active session's model so re-invocation honours any
-                # explicit backend override (e.g. gemini) set by the user.
-                active_model = next(
-                    (s.model for s in ws_module._sessions), "claude"
-                )
+                active_model = next((s.model for s in ws_module._sessions), "claude")
                 asyncio.create_task(ws_module.handle_browser_result(data, active_model))
             elif data.get("type") == "browser_blocker_resolved":
                 asyncio.create_task(ws_module.handle_browser_blocker_resolved(data))
             else:
                 await broadcast_event(data)
     except Exception:
-        logger.exception("browser_relay_endpoint error")
+        logging.getLogger(__name__).exception("browser_relay_endpoint error")
 
-
-# ── Static frontend ────────────────────────────────────────────────────────────
 
 app.mount("/static", StaticFiles(directory=str(STATIC_DIR)), name="static")
 
