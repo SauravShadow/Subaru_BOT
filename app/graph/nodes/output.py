@@ -3,6 +3,8 @@
 import logging
 import re
 
+from langchain_core.runnables import RunnableConfig
+
 from app.graph.state import WorkerState
 from app.graph import broadcast
 from app.output import pipeline
@@ -27,7 +29,7 @@ def _extract_summary(text: str) -> str:
     return text.strip()[:120]
 
 
-async def output_node(state: WorkerState, config: dict) -> dict:
+async def output_node(state: WorkerState, config: RunnableConfig) -> dict:
     thread_id = config.get("configurable", {}).get("thread_id", "")
 
     async def send(data: dict) -> None:
