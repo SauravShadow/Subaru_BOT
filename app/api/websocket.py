@@ -32,7 +32,7 @@ from fastapi import WebSocket, WebSocketDisconnect, Query
 
 from app.agents import backend_state
 from app.agents import definitions as defs
-from app.agents.executor import run_agent
+from app.agents.runner import run_agent
 from app.services import delegation as deleg_svc
 from app.services import email as email_svc
 from app.services import memory as mem_svc
@@ -274,7 +274,7 @@ async def _handle_vision_message(
     images: list[dict],
 ) -> None:
     """Handle a message with image attachments — routes to Claude Vision."""
-    from app.agents.executor import run_claude_vision
+    from app.agents.runner import run_claude_vision
 
     user_label = f"{text} [+{len(images)} image(s)]" if text else f"[{len(images)} image(s)]"
     state.record(agent_id, "user", user_label)

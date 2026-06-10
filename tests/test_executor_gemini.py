@@ -12,7 +12,7 @@ async def test_run_agent_uses_gemini_when_claude_exhausted():
     bs._current_backend    = "claude"
     bs.mark_quota_exhausted()   # Claude → exhausted
 
-    from app.agents import executor
+    from app.agents import runner as executor
     sent = []
     async def fake_send(d): sent.append(d)
 
@@ -29,7 +29,7 @@ async def test_run_agent_uses_gemini_when_claude_exhausted():
 @pytest.mark.asyncio
 async def test_classify_model_routes_correctly():
     """Task classifier routes by type: long/chitchat → gemini, code/logic → claude."""
-    from app.agents.executor import _classify_model
+    from app.agents.runner import _classify_model
 
     assert _classify_model("write a python class for async http requests") == "claude"
     assert _classify_model("debug this traceback") == "claude"
@@ -46,7 +46,7 @@ async def test_run_agent_prefers_gemini_for_chitchat():
     bs._gemini_failed_at   = None
     bs._current_backend    = "claude"
 
-    from app.agents import executor
+    from app.agents import runner as executor
     sent = []
     async def fake_send(d): sent.append(d)
 
@@ -69,7 +69,7 @@ async def test_run_gemini_agent_falls_back_on_error():
     bs._current_backend    = "claude"
     bs.mark_quota_exhausted()
 
-    from app.agents import executor
+    from app.agents import runner as executor
     sent = []
     async def fake_send(d): sent.append(d)
 
@@ -88,7 +88,7 @@ async def test_run_gemini_agent_falls_back_on_error():
 
 def test_gemini_prompt_carves_exception_for_agents_with_safe_tags():
     """Maya's prompt must explicitly permit her [BROWSER_*] tags, not blanket-ban them."""
-    from app.agents.executor import _build_gemini_prompt
+    from app.agents.runner import _build_gemini_prompt
     prompt = _build_gemini_prompt("browser", "find backend roles and apply")
     assert "[BROWSER_APPLY:" in prompt
     assert "[BROWSER_DISCOVER:" in prompt
@@ -97,7 +97,7 @@ def test_gemini_prompt_carves_exception_for_agents_with_safe_tags():
 
 def test_gemini_prompt_keeps_blanket_ban_for_agents_without_safe_tags():
     """An agent with no gemini_safe_tags gets the original blanket instruction, unchanged."""
-    from app.agents.executor import _build_gemini_prompt
+    from app.agents.runner import _build_gemini_prompt
     prompt = _build_gemini_prompt("ceo", "what's the status of the deploy")
     assert "Do NOT output [BASH:], [READ:], [WRITE:]," in prompt
     assert "or similar execution tool tags" in prompt

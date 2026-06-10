@@ -33,7 +33,7 @@ def test_parse_ask_agent_not_confused_with_bash():
 @pytest.mark.asyncio
 async def test_execute_ask_agent_calls_run_agent():
     """_execute_tool should call run_agent on the target agent and return its response."""
-    from app.agents import executor
+    from app.agents import runner as executor
 
     sent = []
     async def fake_send(d): sent.append(d)
@@ -50,7 +50,7 @@ async def test_execute_ask_agent_calls_run_agent():
 async def test_execute_ask_agent_timeout_returns_fallback():
     """When target agent times out, return a descriptive fallback (don't raise)."""
     import asyncio
-    from app.agents import executor
+    from app.agents import runner as executor
 
     sent = []
     async def fake_send(d): sent.append(d)
@@ -59,7 +59,7 @@ async def test_execute_ask_agent_timeout_returns_fallback():
         await asyncio.sleep(999)
 
     with patch.object(executor, "run_agent", new=_slow):
-        with patch("app.agents.executor._ASK_TIMEOUT", 0.05):
+        with patch("app.agents.runner._ASK_TIMEOUT", 0.05):
             result = await executor._execute_tool(
                 "backend", "ask_agent", {"target": "ceo", "question": "hello?"}, fake_send
             )

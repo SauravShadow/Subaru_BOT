@@ -83,7 +83,7 @@ def get_routine_logs(routine_id: str, limit: int = 10) -> list[dict]:
 
 async def run_routine(routine: dict) -> str:
     """Execute a routine: run the agent, store logs, broadcast completion."""
-    from app.agents.executor import run_agent
+    from app.agents.runner import run_agent
     from app.api.websocket import broadcast_event
 
     routine_id    = routine["id"]

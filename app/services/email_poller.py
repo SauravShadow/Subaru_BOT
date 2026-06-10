@@ -159,7 +159,7 @@ async def _run_ceo_headless(prompt: str, task_id: str = "") -> str:
     Each email task gets its own isolated conversation history via a
     unique agent_id so concurrent tasks never bleed into each other.
     """
-    from app.agents.executor import run_agent
+    from app.agents.runner import run_agent
     import json as _json
 
     # Use per-task agent ID so concurrent email tasks get isolated CEO histories

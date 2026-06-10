@@ -1,7 +1,7 @@
 """
-Agent execution engine.
-Provides run_agent() — a multi-turn agentic loop that calls tgpt or Claude CLI
-and pipes all events back through the WebSocket via a lock-protected sender.
+Agent execution engine (runner).
+Provides run_agent() — multi-turn agentic loop routing through Claude CLI,
+Gemini API, or tgpt. Called from LangGraph worker nodes as a black-box function.
 """
 import asyncio
 import json

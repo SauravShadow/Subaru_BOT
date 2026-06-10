@@ -9,7 +9,7 @@ import logging
 from datetime import datetime
 
 from app.state import manager as state
-from app.agents.executor import run_agent
+from app.agents.runner import run_agent
 from app.api.websocket import broadcast_event
 
 logger = logging.getLogger(__name__)

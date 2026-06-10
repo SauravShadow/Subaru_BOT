@@ -504,7 +504,7 @@ async def api_compact(body: dict = None):
     body: {"agent": "ceo"}  — compact one agent
     body: {}                 — compact all agents
     """
-    from app.agents.executor import _auto_compact_history
+    from app.agents.runner import _auto_compact_history
 
     agent_id = (body or {}).get("agent")
     targets  = [agent_id] if agent_id else list(state.conversation_histories.keys())

@@ -6,7 +6,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 async def test_run_claude_vision_streams_text():
     """run_claude_vision should stream text chunks via send."""
     import os
-    from app.agents.executor import run_claude_vision
+    from app.agents.runner import run_claude_vision
 
     sent = []
     async def fake_send(d): sent.append(d)
@@ -40,7 +40,7 @@ async def test_run_claude_vision_streams_text():
 async def test_run_claude_vision_builds_multimodal_content():
     """run_claude_vision must put image blocks before the text block."""
     import os
-    from app.agents.executor import run_claude_vision
+    from app.agents.runner import run_claude_vision
 
     sent = []
     async def fake_send(d): sent.append(d)
@@ -86,7 +86,7 @@ async def test_run_claude_vision_builds_multimodal_content():
 @pytest.mark.asyncio
 async def test_run_claude_vision_falls_back_on_error():
     """On API error, vision should return an error string (not raise)."""
-    from app.agents.executor import run_claude_vision
+    from app.agents.runner import run_claude_vision
 
     sent = []
     async def fake_send(d): sent.append(d)
