@@ -1,443 +1,236 @@
-"""
-Single-WebSocket multi-agent endpoint.
-
-Protocol (client → server):
-  {"type": "message",        "agent": "ceo",  "text": "..."}
-  {"type": "clear",          "agent": "ceo"}
-  {"type": "model",          "model": "claude" | "chatgpt" | "gemini"}
-  {"type": "force_complete", "task_id": 5}
-  {"type": "reset_task",     "task_id": 5}
-  {"type": "cancel_worker",  "agent": "reinhard"}
-
-Protocol (server → client):
-  {"type": "init",           "agents": {...}, "workdir": "...", "work_queue": [...]}
-  {"type": "thinking",       "agent": "ceo"}
-  {"type": "assistant",      "agent": "ceo",  "message": {"content": [...]}}
-  {"type": "tool_call",      "agent": "...",  "tool": "bash", "path": "...", "label": "..."}
-  {"type": "done",           "agent": "ceo"}
-  {"type": "worker_done",    "agent": "reinhard", "task_id": 5, "summary": "..."}
-  {"type": "delegation",     "item": {...}}
-  {"type": "cleared",        "agent": "ceo"}
-  {"type": "failover",       "agent": "...",  "message": "..."}
-  {"type": "error",          "agent": "...",  "message": "..."}
-  {"type": "email_sent",     "subject": "...", "ok": true}
-  {"type": "queue_update",   "work_queue": [...]}
-"""
+# app/api/websocket.py
+"""WebSocket handler — wraps nexus_graph.astream_events() and broadcasts to clients."""
 import asyncio
 import json
 import logging
-from typing import Any, Dict, Set
+import re
+from uuid import uuid4
 
-from fastapi import WebSocket, WebSocketDisconnect, Query
+from fastapi import WebSocket
+from fastapi.websockets import WebSocketDisconnect
 
-from app.agents import backend_state
 from app.agents import definitions as defs
-from app.agents.runner import run_agent
-from app.services import delegation as deleg_svc
-from app.services import email as email_svc
-from app.services import memory as mem_svc
-from app.state import manager as state
-from app.skills import skill_loader
+from app.graph import broadcast as bcast
 
 logger = logging.getLogger(__name__)
 
-# Module-level registry of active WebSocket sessions for broadcasting
-_sessions: set["Session"] = set()
+# ── In-memory step/checkpoint counters (per thread+agent) ──────────────────────
+
+_step_counters: dict[str, int] = {}        # f"{thread_id}:{agent_id}" → count
+_checkpoint_counters: dict[str, int] = {}  # f"{thread_id}:{agent_id}" → count
+
+_DONE_RE = re.compile(r'\[DONE:\s*([^\]]{1,120})\]')
+
+
+def _agent_key(thread_id: str, agent_id: str) -> str:
+    return f"{thread_id}:{agent_id}"
+
+
+def _extract_agent_id(metadata: dict) -> str:
+    """Extract agent_id from langgraph_checkpoint_ns like 'backend:abc123'."""
+    ns = metadata.get("langgraph_checkpoint_ns", "")
+    return ns.split(":")[0] if ":" in ns else ns
+
+
+def _extract_summary(result: str) -> str:
+    m = _DONE_RE.search(result)
+    return m.group(1).strip() if m else result.strip()[:120]
+
+
+def _translate_event(event: dict, thread_id: str) -> dict | None:
+    """Map a LangGraph astream_events v2 event to a frontend WS message."""
+    kind = event.get("event", "")
+    name = event.get("name", "")
+    metadata = event.get("metadata", {})
+    data = event.get("data", {})
+    agent_id = _extract_agent_id(metadata)
+
+    # Reset counters at start of new CEO task
+    if kind == "on_chain_start" and name == "ceo_node":
+        for k in list(_step_counters):
+            if k.startswith(thread_id + ":"):
+                del _step_counters[k]
+        for k in list(_checkpoint_counters):
+            if k.startswith(thread_id + ":"):
+                del _checkpoint_counters[k]
+        return {"type": "thinking", "agent": "ceo", "thread_id": thread_id}
+
+    if kind == "on_chain_start" and name in defs.all_agents():
+        return {"type": "delegation", "agent": name, "thread_id": thread_id}
+
+    if kind == "on_tool_start":
+        key = _agent_key(thread_id, agent_id)
+        _step_counters[key] = _step_counters.get(key, 0) + 1
+        step = _step_counters[key]
+        tool_name = data.get("name") or name
+        tool_input = data.get("input", {})
+        label = (
+            tool_input.get("command")
+            or tool_input.get("file_path")
+            or tool_input.get("query")
+            or tool_name
+        )
+        if isinstance(label, str) and len(label) > 80:
+            label = label[:80] + "…"
+        return {
+            "type": "worker_step",
+            "agent": agent_id,
+            "step": step,
+            "tool": tool_name,
+            "label": str(label),
+            "thread_id": thread_id,
+        }
+
+    if kind == "on_chain_end" and name == "worker_node":
+        key = _agent_key(thread_id, agent_id)
+        _checkpoint_counters[key] = _checkpoint_counters.get(key, 0) + 1
+        step = _step_counters.get(key, 0)
+        output = data.get("output", {})
+        summary = _extract_summary(output.get("result", ""))
+        return {
+            "type": "worker_checkpoint",
+            "agent": agent_id,
+            "index": _checkpoint_counters[key],
+            "summary": summary,
+            "step": step,
+            "thread_id": thread_id,
+        }
+
+    if kind == "on_chain_end" and name == "output_node":
+        return {"type": "worker_done", "agent": agent_id, "thread_id": thread_id}
+
+    if kind == "on_chain_end" and name == "ceo_node":
+        return {"type": "done", "agent": "ceo", "thread_id": thread_id}
+
+    if kind == "on_chain_error":
+        err = str(data.get("error", "unknown error"))[:200]
+        return {"type": "error", "agent": agent_id or "unknown", "message": err, "thread_id": thread_id}
+
+    if kind == "on_chat_model_stream":
+        chunk = data.get("chunk", {})
+        content = getattr(chunk, "content", "") if hasattr(chunk, "content") else ""
+        if content:
+            return {"type": "assistant", "agent": agent_id or "ceo", "message": {"content": content}, "thread_id": thread_id}
+
+    return None
+
+
+# ── Sessions + active runs ─────────────────────────────────────────────────────
+
+class Session:
+    def __init__(self, ws: WebSocket, model: str):
+        self.ws = ws
+        self.model = model
+        self._lock = asyncio.Lock()
+
+    async def send(self, data: dict) -> None:
+        async with self._lock:
+            try:
+                await self.ws.send_json(data)
+            except Exception:
+                pass
+
+
+_sessions: set[Session] = set()
+_active_runs: dict[str, asyncio.Task] = {}
 
 
 async def broadcast_event(data: dict) -> None:
-    """Send an event to all currently connected WebSocket sessions."""
     for session in list(_sessions):
-        try:
-            await session.send(data)
-        except Exception:
-            pass
+        await session.send(data)
 
 
-# ── Session helpers ────────────────────────────────────────────────────────────
-
-class Session:
-    """Per-WebSocket session state."""
-
-    def __init__(self, ws: WebSocket, model: str):
-        self.ws     = ws
-        self.model  = model
-        self._lock  = asyncio.Lock()
-        self.bg_tasks: Set[asyncio.Task] = set()
-        # agent_id → asyncio.Task for cancellable background workers
-        self.worker_tasks: Dict[str, asyncio.Task] = {}
-
-    async def send(self, data: dict) -> None:
-        """Thread-safe WS send that handles a special _raw_json passthrough."""
-        async with self._lock:
-            try:
-                if "_raw_json" in data:
-                    await self.ws.send_text(data["_raw_json"])
-                else:
-                    if data.get("type") == "audio":
-                        audio_len = len(data.get("data", ""))
-                        logger.info("WS send: audio payload %d bytes", audio_len)
-                    await self.ws.send_json(data)
-                    if data.get("type") == "audio":
-                        logger.info("WS send: audio sent successfully")
-            except Exception as exc:
-                logger.warning("WS send error (type=%s): %s", data.get("type"), exc)
-
-    def make_sender(self, agent_id: str):
-        """Return a Sender coroutine that always tags the agent_id."""
-        async def _send(data: dict) -> None:
-            # Ensure every event carries the agent tag
-            if "agent" not in data and "_raw_json" not in data:
-                data = {**data, "agent": agent_id}
-            await self.send(data)
-        return _send
-
-    def cancel_all(self) -> None:
-        for t in list(self.bg_tasks):
-            t.cancel()
-        for t in list(self.worker_tasks.values()):
-            t.cancel()
+def _build_init_payload() -> dict:
+    agents = defs.all_agents()
+    return {
+        "type": "init",
+        "agents": [
+            {"id": aid, "name": a["name"], "role": a["role"], "status": "idle"}
+            for aid, a in agents.items()
+        ],
+        "work_queue": [],
+    }
 
 
-# ── Background worker runner ───────────────────────────────────────────────────
+async def _run_and_stream(task: str, thread_id: str, model: str) -> None:
+    from app.graph.nexus_graph import build_nexus_graph
+    from app.graph.checkpointer import get_checkpointer
 
-async def _run_worker_bg(
-    session: Session,
-    agent_id: str,
-    task_text: str,
-    task_id: int,
-) -> None:
-    """Execute a delegated task in the background, streaming updates to the browser."""
-    _completed_ok = False
+    cp = await get_checkpointer()
+    graph = build_nexus_graph(cp)
+
+    async def send_fn(data: dict) -> None:
+        await broadcast_event(data)
+
+    bcast.register(thread_id, send_fn)
     try:
-        send = session.make_sender(agent_id)
-
-        # Mark task running in state
-        for item in state.work_queue:
-            if item["id"] == task_id:
-                item["status"] = "running"
-                state.active_agent_tasks[agent_id] = task_id
-                state.save_state()
-                break
-
-        await session.send({
-            "type": "thinking", "agent": agent_id,
-            "task_id": task_id,
-        })
-
-        state.record(agent_id, "user", task_text)
-        full_resp = await run_agent(agent_id, task_text, send, session.model)
-        state.record(agent_id, "assistant", deleg_svc.clean_response(full_resp))
-
-        # Summarise completion
-        import re
-        done_m = re.search(r'\[DONE:\s*(.*?)\]', full_resp, re.DOTALL)
-        summary = done_m.group(1).strip() if done_m else (full_resp.strip()[:120] + "…")
-
-        completed = state.complete_work_item(task_id, summary)
-        await session.send({
-            "type":    "worker_done",
-            "agent":   agent_id,
-            "task_id": task_id,
-            "summary": summary,
-        })
-        await session.send({"type": "queue_update", "work_queue": state.work_queue})
-        await session.send({"type": "task_history_update",
-                            "task_history": list(reversed(state.task_history))})
-        await session.send({"type": "done", "agent": agent_id})
-        _completed_ok = True
-
+        config = {"configurable": {"thread_id": thread_id, "model": model}}
+        async for event in graph.astream_events(
+            {"task": task, "session_id": thread_id, "model": model,
+             "source": "browser", "worker_results": [], "delegations": [],
+             "artifacts": {}, "ceo_verdict": "approved", "revision_notes": "",
+             "ceo_response": "", "worker_progress": {}},
+            config,
+            version="v2",
+        ):
+            msg = _translate_event(event, thread_id)
+            if msg:
+                await broadcast_event(msg)
     except asyncio.CancelledError:
-        logger.info("Worker %s task %d cancelled", agent_id, task_id)
-        state.reset_work_item(task_id)
-        await session.send({
-            "type": "assistant", "agent": agent_id,
-            "message": {"content": [{"type": "text",
-                "text": f"\n[Worker {agent_id} task cancelled by user]\n"
-            }]},
-        })
+        pass
     except Exception as exc:
-        logger.exception("Worker %s failed: %s", agent_id, exc)
-        state.reset_work_item(task_id)
-        await session.send({"type": "error", "agent": agent_id, "message": str(exc)})
+        logger.exception("nexus_graph run error: %s", exc)
+        await broadcast_event({"type": "error", "agent": "ceo", "message": str(exc)})
     finally:
-        session.worker_tasks.pop(agent_id, None)
-        if _completed_ok:
-            # Chain to next pending task for this agent (sequential queue processing)
-            next_item = next(
-                (i for i in state.work_queue
-                 if i.get("agent") == agent_id and i.get("status") == "pending"),
-                None,
-            )
-            if next_item:
-                bg = asyncio.create_task(
-                    _run_worker_bg(session, agent_id, next_item["task"], next_item["id"])
-                )
-                session.bg_tasks.add(bg)
-                bg.add_done_callback(session.bg_tasks.discard)
-                session.worker_tasks[agent_id] = bg
-                logger.info(
-                    "Chaining to next pending task #%d for agent '%s'",
-                    next_item["id"], agent_id,
-                )
+        bcast.unregister(thread_id)
 
 
-async def handle_browser_result(data: dict, model: str = "claude") -> None:
-    """Feed a completed browser-svc task back into the originating worker's
-    conversation, mirroring _run_worker_bg's record → run_agent → record sequence
-    so the worker is grounded in a real result instead of narrating unconfirmed claims.
-
-    The ``model`` parameter is forwarded to run_agent so that re-invocations honour
-    the session's active backend (e.g. gemini) rather than always defaulting to the
-    classification path.  The caller (browser_relay_endpoint) reads the model from
-    any live frontend session so explicit overrides are preserved.
-    """
-    agent_id   = data.get("agent_id", "maya")
-    slot_id    = data.get("slot_id")
-    tool       = data.get("tool", "browser action")
-    result     = data.get("result", "")
-    slot_label = f" (slot {slot_id})" if slot_id is not None else ""
-    task_text  = f"[Browser result{slot_label} — {tool}] {result}"
-
-    async def send(payload: dict) -> None:
-        if "agent" not in payload and "_raw_json" not in payload:
-            payload = {**payload, "agent": agent_id}
-        await broadcast_event(payload)
-
-    await broadcast_event({"type": "thinking", "agent": agent_id})
-    state.record(agent_id, "user", task_text)
-    full_resp = await run_agent(agent_id, task_text, send, model)
-    state.record(agent_id, "assistant", deleg_svc.clean_response(full_resp))
-    await broadcast_event({"type": "done", "agent": agent_id})
-
-
-async def handle_browser_blocker_resolved(data: dict) -> None:
-    """Persist a resolved automation blocker as a structured memory, closing the
-    spec's learning loop. No separate retrieval path is needed: _build_context_block
-    (executor.py:138-141) already calls get_relevant_memories(agent_id, user_query)
-    on every turn, so once this content names the site, it surfaces in Maya's live
-    context the next time the user asks her to work on that site."""
-    agent_id     = data.get("agent_id", "maya")
-    site         = data.get("site", "")
-    blocker_type = data.get("blocker_type", "")
-    resolution   = data.get("resolution", "")
-    timestamp    = data.get("timestamp", "")
-    content = f"Blocker on {site}: {blocker_type} — {resolution} (at {timestamp})"
-    mem_svc.save_memory(agent_id, content, mem_type="browser_blocker", importance=0.6)
-
-
-# ── Message router ─────────────────────────────────────────────────────────────
-
-async def _heartbeat_loop(session: Session) -> None:
-    """Send periodic heartbeats so proxies/firewalls don't drop idle connections."""
-    while True:
-        await asyncio.sleep(5)
-        await session.send({"type": "heartbeat"})
-
-
-async def _handle_message(session: Session, agent_id: str, text: str) -> None:
-    """Execute a user message to a specific agent."""
-    state.record(agent_id, "user", text)
-    send = session.make_sender(agent_id)
-
-    await session.send({"type": "thinking", "agent": agent_id})
-
-    hb = asyncio.create_task(_heartbeat_loop(session))
-    try:
-        full_resp = await run_agent(agent_id, text, send, session.model)
-    finally:
-        hb.cancel()
-
-    # Handle CEO delegations
-    if agent_id == "ceo":
-        for role, task_text in deleg_svc.parse_delegations(full_resp):
-            item = state.create_work_item(role, task_text, "ceo")
-            await session.send({"type": "delegation", "item": item})
-            await session.send({"type": "queue_update", "work_queue": state.work_queue})
-
-            # Spawn background worker
-            bg = asyncio.create_task(
-                _run_worker_bg(session, role, task_text, item["id"])
-            )
-            session.bg_tasks.add(bg)
-            bg.add_done_callback(session.bg_tasks.discard)
-            session.worker_tasks[role] = bg
-
-    state.record(agent_id, "assistant", deleg_svc.clean_delegations(full_resp))
-    await session.send({"type": "done", "agent": agent_id})
-
-
-async def _handle_vision_message(
-    session: "Session",
-    agent_id: str,
-    text: str,
-    images: list[dict],
-) -> None:
-    """Handle a message with image attachments — routes to Claude Vision."""
-    from app.agents.runner import run_claude_vision
-
-    user_label = f"{text} [+{len(images)} image(s)]" if text else f"[{len(images)} image(s)]"
-    state.record(agent_id, "user", user_label)
-    send = session.make_sender(agent_id)
-
-    await session.send({"type": "thinking", "agent": agent_id})
-    full_resp = await run_claude_vision(agent_id, text, images, send)
-
-    state.record(agent_id, "assistant", full_resp)
-    await session.send({"type": "done", "agent": agent_id})
-
-
-async def _handle_force_complete(session: Session, task_id: int) -> None:
-    item = state.force_complete_item(task_id)
-    if item:
-        agent_id = item.get("agent", "")
-        # Cancel any running background task for this agent
-        t = session.worker_tasks.pop(agent_id, None)
-        if t:
-            t.cancel()
-        await session.send({"type": "queue_update", "work_queue": state.work_queue})
-        await session.send({
-            "type": "assistant", "agent": "ceo",
-            "message": {"content": [{"type": "text",
-                "text": f"\n🛠 Task #{task_id} for {agent_id} was force-completed.\n"
-            }]},
-        })
-
-
-async def _handle_reset_task(session: Session, task_id: int) -> None:
-    item = state.reset_work_item(task_id)
-    if item:
-        agent_id = item.get("agent", "")
-        t = session.worker_tasks.pop(agent_id, None)
-        if t:
-            t.cancel()
-        await session.send({"type": "queue_update", "work_queue": state.work_queue})
-
-
-async def _handle_cancel_worker(session: Session, agent_id: str) -> None:
-    t = session.worker_tasks.pop(agent_id, None)
-    if t:
-        t.cancel()
-    # Also reset the running task in the queue for this agent
-    for item in state.work_queue:
-        if item.get("agent") == agent_id and item.get("status") == "running":
-            item["status"] = "pending"
-            state.save_state()
-    await session.send({"type": "queue_update", "work_queue": state.work_queue})
-
-
-# ── WebSocket endpoint ─────────────────────────────────────────────────────────
-
-async def ws_endpoint(ws: WebSocket, model: str = Query(default="claude")) -> None:
+async def ws_endpoint(ws: WebSocket, model: str = "claude") -> None:
     session = Session(ws, model)
-    await ws.accept()
+    thread_id = f"ws_{uuid4().hex}"
     _sessions.add(session)
-
-    agents  = defs.all_agents()
-    await session.send({
-        "type":         "init",
-        "agents":       {k: defs.public_agent_info(k, v) for k, v in agents.items()},
-        "workdir":      str(state._get_workdir()),
-        "work_queue":   state.work_queue,
-        "backend":      backend_state.status_dict(),
-        "changelog":    state.load_changelog()[-5:],
-        "task_history": list(reversed(state.task_history)),
-        "skills":       skill_loader.list_tools(),
-    })
-    # Clear any stale thinking/spinner state from a previous disconnected session
-    for agent_id in agents:
-        await session.send({"type": "done", "agent": agent_id})
-
-    # Reset tasks left as "running" by a previous session whose workers were cancelled
-    stale = [i for i in state.work_queue if i.get("status") == "running"]
-    if stale:
-        for item in stale:
-            item["status"] = "pending"
-        state.save_state()
-        logger.info("Reset %d stale 'running' task(s) to pending on new connection", len(stale))
-
-    # Auto-resume pending background tasks — one per agent, in queue order
-    resumed: set[str] = set()
-    for item in state.work_queue:
-        if item.get("status") != "pending":
-            continue
-        worker_agent = item.get("agent", "")
-        if worker_agent not in agents or worker_agent in resumed:
-            continue
-        resumed.add(worker_agent)
-        bg = asyncio.create_task(
-            _run_worker_bg(session, worker_agent, item["task"], item["id"])
-        )
-        session.bg_tasks.add(bg)
-        bg.add_done_callback(session.bg_tasks.discard)
-        session.worker_tasks[worker_agent] = bg
-        logger.info("Auto-resuming pending task #%d for agent '%s'", item["id"], worker_agent)
-
-    if resumed:
-        await session.send({"type": "queue_update", "work_queue": state.work_queue})
+    await ws.accept()
+    await session.send(_build_init_payload())
 
     try:
         while True:
             raw = await ws.receive_text()
-            raw = raw.strip()
-            if not raw:
-                continue
-
-            # Parse — fall back to plain CEO text for backward compat
-            try:
-                msg = json.loads(raw)
-            except json.JSONDecodeError:
-                msg = {"type": "message", "agent": "ceo", "text": raw}
-
-            msg_type = msg.get("type", "message")
+            msg = json.loads(raw)
+            msg_type = msg.get("type", "")
 
             if msg_type == "message":
-                agent_id    = msg.get("agent", "ceo")
-                text        = msg.get("text", "").strip()
-                attachments = msg.get("attachments", [])
-                if agent_id not in defs.all_agents():
-                    agent_id = "ceo"
-                images = [
-                    a for a in attachments
-                    if a.get("media_type", "").startswith("image/")
-                    and a.get("data")
-                ]
-                if images:
-                    await _handle_vision_message(session, agent_id, text, images)
-                elif text:
-                    await _handle_message(session, agent_id, text)
-                else:
-                    continue
-
-            elif msg_type == "model":
-                session.model = msg.get("model", "claude")
-
-            elif msg_type == "clear":
-                agent_id = msg.get("agent", "ceo")
-                state.conversation_histories[agent_id] = []
-                state.save_state()
-                await session.send({"type": "cleared", "agent": agent_id})
-
-            elif msg_type == "force_complete":
-                await _handle_force_complete(session, int(msg.get("task_id", -1)))
-
-            elif msg_type == "reset_task":
-                await _handle_reset_task(session, int(msg.get("task_id", -1)))
+                t = asyncio.create_task(
+                    _run_and_stream(msg["text"], thread_id, session.model)
+                )
+                _active_runs[thread_id] = t
 
             elif msg_type == "cancel_worker":
-                await _handle_cancel_worker(session, msg.get("agent", ""))
+                task = _active_runs.pop(thread_id, None)
+                if task:
+                    task.cancel()
 
-            elif msg_type == "ping":
-                await session.send({"type": "pong"})
+            elif msg_type == "model":
+                session.model = msg.get("model", session.model)
 
-    except WebSocketDisconnect as exc:
-        logger.info("WebSocket disconnected (code=%s reason=%r)", exc.code, exc.reason)
-    except Exception as exc:
-        logger.exception("WS handler error: %s", exc)
-        try:
-            await session.send({"type": "error", "agent": "system", "message": str(exc)})
-        except Exception:
-            pass
+            elif msg_type == "clear":
+                task = _active_runs.pop(thread_id, None)
+                if task:
+                    task.cancel()
+
+    except WebSocketDisconnect:
+        pass
+    except Exception:
+        logger.exception("ws_endpoint error")
     finally:
         _sessions.discard(session)
-        session.cancel_all()
+        task = _active_runs.pop(thread_id, None)
+        if task:
+            task.cancel()
+
+
+async def handle_browser_result(data: dict, model: str) -> None:
+    await broadcast_event(data)
+
+
+async def handle_browser_blocker_resolved(data: dict) -> None:
+    await broadcast_event(data)
