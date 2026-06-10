@@ -46,9 +46,12 @@ async def on_startup():
     from app.skills import skill_loader
     skill_loader.load_all()
 
-    # Start background services
+    # Build email_graph and start background services
+    from langgraph.checkpoint.memory import MemorySaver
+    from app.graph.email.graph import build_email_graph
     from app.services import email_poller, scheduler
-    _poller_task = asyncio.create_task(email_poller.start())
+    _email_graph = build_email_graph(MemorySaver())
+    _poller_task = asyncio.create_task(email_poller.start(_email_graph))
     asyncio.create_task(scheduler.start_scheduler_loop())
 
 
