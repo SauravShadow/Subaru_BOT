@@ -118,6 +118,9 @@ class NexusState(TypedDict):
     # CEO review
     ceo_verdict: Literal["approved", "revise", "delegate_more", "done"]
     revision_notes: str
+
+    # Node progress — updated by _translate_event() on every tool call and checkpoint
+    worker_progress: dict   # {agent_id: {"step": int, "checkpoints": list[str]}}
 ```
 
 ### `WorkerState` — scoped to each worker subgraph
@@ -427,18 +430,48 @@ async def _run_and_stream(task, thread_id, model):
             await broadcast_event(msg)
 ```
 
-`_translate_event()` maps LangGraph events to the **unchanged** frontend WS protocol. Agent identity is extracted from the event's `metadata["langgraph_checkpoint_ns"]` field, which encodes the subgraph name (e.g. `"backend:abc123"` → `agent_id = "backend"`):
+`_translate_event()` maps LangGraph events to the frontend WS protocol. Agent identity is extracted from the event's `metadata["langgraph_checkpoint_ns"]` field, which encodes the subgraph name (e.g. `"backend:abc123"` → `agent_id = "backend"`):
 
 | LangGraph event | Frontend message |
 |---|---|
 | `on_chain_start` / `ceo_node` | `{"type": "thinking", "agent": "ceo"}` |
 | `on_chat_model_stream` | `{"type": "assistant", "agent": "...", "message": {...}}` |
-| `on_tool_start` | `{"type": "tool_call", "agent": "...", "tool": "bash", ...}` |
+| `on_tool_start` | `{"type": "worker_step", "agent": "...", "step": N, "tool": "bash", "label": "..."}` |
+| `on_tool_end` | *(no frontend event — result goes back to LLM internally)* |
+| `on_chain_end` / `worker_node` | `{"type": "worker_checkpoint", "agent": "...", "index": N, "summary": "...", "step": N}` |
 | `on_chain_end` / `output_node` | `{"type": "worker_done", "agent": "...", "summary": "..."}` |
 | `on_chain_end` / `ceo_node` | `{"type": "done", "agent": "ceo"}` |
 | `on_chain_error` | `{"type": "error", "agent": "...", "message": "..."}` |
 
-Frontend JavaScript is **unchanged**.
+**Step counter**: `_translate_event()` maintains an in-memory `_step_counters: dict[str, int]` keyed by `thread_id + agent_id`. Incremented on every `on_tool_start`. Reset to 0 when a new task starts (`on_chain_start` / `ceo_node`).
+
+**`worker_step` event** — fine-grained, emitted on every tool invocation:
+```json
+{
+  "type": "worker_step",
+  "agent": "backend",
+  "step": 6,
+  "tool": "bash",
+  "label": "Running pytest",
+  "thread_id": "ws_abc123"
+}
+```
+
+**`worker_checkpoint` event** — coarse-grained, emitted when LangGraph saves a checkpoint at a node boundary (i.e., a worker subgraph node completes). This is the meaningful milestone:
+```json
+{
+  "type": "worker_checkpoint",
+  "agent": "backend",
+  "index": 2,
+  "summary": "Scaffolded API routes and models",
+  "step": 6,
+  "thread_id": "ws_abc123"
+}
+```
+
+Summary is extracted from the last `[DONE:]` tag in the worker's output, or the first 120 chars of the result if no `[DONE:]` is present.
+
+Frontend receives both new event types alongside the existing protocol — fully additive, no breaking changes.
 
 ### App startup (`main.py`)
 
@@ -515,6 +548,61 @@ langchain-core>=0.3.0
 Remove from `requirements.txt` (if present): nothing — all existing deps stay.
 
 `langchain-google-genai` is used only in the CEO review node. All other Gemini calls continue using `google-genai` SDK directly.
+
+---
+
+## 12. Node Progress Visualization Contract
+
+This section defines the event contract between the LangGraph backend and the NEXUS 3D UI (see `2026-06-10-nexus-3d-neural-dashboard-design.md`).
+
+### New event types emitted by `_translate_event()`
+
+**`worker_step`** — one per tool call, fine-grained progress:
+```json
+{"type": "worker_step", "agent": "backend", "step": 6, "tool": "bash", "label": "Running pytest", "thread_id": "ws_abc"}
+```
+
+**`worker_checkpoint`** — one per completed LangGraph node boundary, coarse milestone:
+```json
+{"type": "worker_checkpoint", "agent": "backend", "index": 2, "summary": "Scaffolded API routes", "step": 6, "thread_id": "ws_abc"}
+```
+
+### Step counter implementation
+
+```python
+# In _translate_event() module scope
+_step_counters: dict[str, int] = {}   # f"{thread_id}:{agent_id}" → count
+_checkpoint_counters: dict[str, int] = {}
+
+def _agent_key(thread_id: str, agent_id: str) -> str:
+    return f"{thread_id}:{agent_id}"
+
+# Reset on new CEO task
+if kind == "on_chain_start" and name == "ceo_node":
+    for k in list(_step_counters):
+        if k.startswith(thread_id):
+            del _step_counters[k]
+            del _checkpoint_counters[k]
+
+# Increment on tool call
+if kind == "on_tool_start":
+    key = _agent_key(thread_id, agent_id)
+    _step_counters[key] = _step_counters.get(key, 0) + 1
+    step = _step_counters[key]
+    # emit worker_step
+
+# Checkpoint on worker node completion
+if kind == "on_chain_end" and name == "worker_node":
+    key = _agent_key(thread_id, agent_id)
+    _checkpoint_counters[key] = _checkpoint_counters.get(key, 0) + 1
+    # emit worker_checkpoint
+```
+
+### What the UI does with these events
+See `2026-06-10-nexus-3d-neural-dashboard-design.md` Section: Node Progress Visualization.
+
+### Total node count
+There is no known total upfront — workers run until done. The UI shows a running count (`"6 steps"`, `"2 checkpoints"`) rather than a percentage bar. If CEO review loops back for a second round, step counters accumulate across rounds (giving a true total effort count).
 
 ---
 
