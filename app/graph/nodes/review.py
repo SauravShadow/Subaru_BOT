@@ -4,6 +4,7 @@ import logging
 import os
 from typing import Literal
 
+from langchain_core.runnables import RunnableConfig
 from langchain_google_genai import ChatGoogleGenerativeAI
 from pydantic import BaseModel
 
@@ -58,7 +59,7 @@ Verdict options:
 Be concise. Your notes will be sent back to the CEO as revision instructions."""
 
 
-async def ceo_review_node(state: NexusState, config: dict) -> dict:
+async def ceo_review_node(state: NexusState, config: RunnableConfig) -> dict:
     if not state.get("worker_results"):
         return {"ceo_verdict": "done", "revision_notes": "No workers ran."}
     try:

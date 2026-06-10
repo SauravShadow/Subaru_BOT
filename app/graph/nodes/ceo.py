@@ -3,6 +3,8 @@
 import logging
 import re
 
+from langchain_core.runnables import RunnableConfig
+
 from app.agents.runner import run_claude_agent
 from app.graph.state import NexusState
 from app.graph import broadcast
@@ -26,7 +28,7 @@ def parse_delegations_from_response(text: str) -> list[dict]:
     ]
 
 
-async def ceo_node(state: NexusState, config: dict) -> dict:
+async def ceo_node(state: NexusState, config: RunnableConfig) -> dict:
     thread_id = config.get("configurable", {}).get("thread_id", "")
     model = config.get("configurable", {}).get("model", "claude")
 
