@@ -102,9 +102,9 @@ async def run_routine(routine: dict) -> str:
         status = "success"
 
         # Parse and send any generated emails (background routines fail-safe)
-        from app.services import delegation as deleg_svc
+        from app.output.handlers.email import parse_emails
         from app.services import email as email_svc
-        for target, subj, body in deleg_svc.parse_emails(output):
+        for target, subj, body in parse_emails(output):
             await email_svc.send_mail(f"[Shadow Garden] {subj}", body, to=target)
 
     except Exception as exc:

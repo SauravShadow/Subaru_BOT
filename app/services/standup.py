@@ -71,9 +71,9 @@ async def run_morning_standup(broadcast_fn=None) -> str:
     text = "".join(output_acc)
 
     # Parse and send any generated emails (background standups fail-safe)
-    from app.services import delegation as deleg_svc
+    from app.output.handlers.email import parse_emails
     from app.services import email as email_svc
-    for target, subj, body in deleg_svc.parse_emails(text):
+    for target, subj, body in parse_emails(text):
         await email_svc.send_mail(f"[Shadow Garden] {subj}", body, to=target)
 
     await broadcast_event({

@@ -29,6 +29,15 @@ def _parse_email_args(header: str, body: str) -> tuple[str | None, str, str]:
     return recipient, subject, body
 
 
+def parse_emails(text: str) -> list[tuple]:
+    """Extract (recipient, subject, body) tuples from [EMAIL_USER:...] tags."""
+    results = []
+    for m in PATTERN.finditer(text):
+        recipient, subject, body = _parse_email_args(m.group(1), m.group(2))
+        results.append((recipient, subject, body))
+    return results
+
+
 async def handle(args: str, agent_id: str, send: Sender) -> tuple[str, bool]:
     from app.services import email as email_svc
     if "\x00" in args:
