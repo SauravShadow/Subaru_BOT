@@ -1,47 +1,74 @@
 // nexus-ui/src/components/NexusScene.tsx
+import { useState, useCallback } from 'react'
 import { Canvas } from '@react-three/fiber'
 import { CameraControls } from '@react-three/drei'
 import { Background } from './Background'
+import { CeoNode } from './CeoNode'
 import { AgentNode } from './AgentNode'
 import { NeuralEdge } from './NeuralEdge'
+import { PostProcessing } from './PostProcessing'
 import { AgentDetailView } from './AgentDetailView'
+import { CommandPalette } from './CommandPalette'
+import { SmartIsland } from './SmartIsland'
+import { HoverCard } from './HoverCard'
+import { ModelPill } from './ModelPill'
 import { useNexusStore } from '../store'
 import { AGENT_POSITIONS } from '../types'
+import { useCommandPalette } from '../hooks/useCommandPalette'
+import { useVoice } from '../hooks/useVoice'
 
 const WORKER_IDS = ['backend', 'frontend', 'qa', 'devops', 'browser'] as const
 
+interface HoverState {
+  agentId: string
+  x: number
+  y: number
+}
+
 export function NexusScene() {
-  const agents = useNexusStore(s => s.agents)
-  const edges = useNexusStore(s => s.edges)
+  const agents        = useNexusStore(s => s.agents)
+  const edges         = useNexusStore(s => s.edges)
   const selectedAgent = useNexusStore(s => s.selectedAgent)
-  const wsStatus = useNexusStore(s => s.wsStatus)
-  const ceoPos = AGENT_POSITIONS['ceo'] ?? [0, 0.5, 4]
+
+  const [hover, setHover] = useState<HoverState | null>(null)
+  const { isSpeaking } = useVoice(null, () => {})
+
+  const palette = useCommandPalette()
+
+  const handleHoverEnter = useCallback((id: string, x: number, y: number) => {
+    setHover({ agentId: id, x, y })
+  }, [])
+
+  const handleHoverLeave = useCallback(() => {
+    setTimeout(() => setHover(null), 300)
+  }, [])
+
+  const canvasStyle = {
+    background: '#020408',
+    filter: selectedAgent ? 'blur(3px) brightness(0.6)' : 'none',
+    transition: 'filter 300ms ease',
+  } as React.CSSProperties
+
+  const ceoPos = AGENT_POSITIONS['ceo']!
 
   return (
     <div style={{ width: '100vw', height: '100vh', position: 'relative' }}>
-      {/* WS status badge */}
-      <div style={{
-        position: 'absolute', top: 16, right: 16, zIndex: 10,
-        fontSize: 11, color: wsStatus === 'connected' ? '#22c55e' : '#ef4444',
-        background: '#0d1117cc', borderRadius: 6, padding: '4px 10px',
-        border: `1px solid ${wsStatus === 'connected' ? '#22c55e44' : '#ef444444'}`,
-      }}>
-        ● {wsStatus === 'connected' ? 'NEXUS ONLINE' : 'OFFLINE'}
-      </div>
+      {/* HUD layer — always on top of canvas */}
+      <ModelPill />
+      <SmartIsland />
 
       <Canvas
         camera={{ position: [0, 2, 10], fov: 60 }}
-        style={{ background: '#050a14' }}
+        style={canvasStyle}
         gl={{ antialias: true, alpha: false }}
       >
         <Background />
-        <pointLight position={ceoPos} intensity={1.5} color="#00f0ff" />
 
-        {/* CEO node */}
+        {/* CEO arc reactor */}
         {agents['ceo'] && (
-          <AgentNode
-            agent={agents['ceo']}
-            position={AGENT_POSITIONS['ceo'] ?? [0, 0.5, 4]}
+          <CeoNode
+            isSpeaking={isSpeaking}
+            onClick={() => {}}
           />
         )}
 
@@ -49,25 +76,47 @@ export function NexusScene() {
         {WORKER_IDS.map(id => {
           const agent = agents[id]
           if (!agent) return null
-          const pos = AGENT_POSITIONS[id] ?? [0, 0, 0]
+          const pos = AGENT_POSITIONS[id]!
           const edge = edges.find(e => e.to === id)
+          const dimmed = !!selectedAgent && selectedAgent !== id
           return (
             <group key={id}>
               <NeuralEdge
-                start={AGENT_POSITIONS['ceo'] ?? [0, 0.5, 4]}
+                start={ceoPos}
                 end={pos}
                 isActive={edge?.isActive ?? false}
+                workerId={id}
               />
-              <AgentNode agent={agent} position={pos} />
+              <AgentNode
+                agent={agent}
+                position={pos}
+                dimmed={dimmed}
+                onHoverEnter={handleHoverEnter}
+                onHoverLeave={handleHoverLeave}
+              />
             </group>
           )
         })}
 
         <CameraControls />
+        <PostProcessing />
       </Canvas>
 
-      {/* Detail overlay — rendered outside Canvas */}
+      {/* DOM overlays */}
       {selectedAgent && <AgentDetailView />}
+
+      {hover && !selectedAgent && (
+        <HoverCard agentId={hover.agentId} x={hover.x} y={hover.y} />
+      )}
+
+      <CommandPalette
+        open={palette.open}
+        query={palette.query}
+        filtered={palette.filtered}
+        onQueryChange={palette.setQuery}
+        onAction={(id) => palette.runAction(id)}
+        onClose={() => palette.setOpen(false)}
+      />
     </div>
   )
 }
