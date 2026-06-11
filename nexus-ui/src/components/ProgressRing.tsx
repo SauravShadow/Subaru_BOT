@@ -17,18 +17,35 @@ export function ProgressRing({ agent, nodeRadius, lastCheckpointIndex }: Progres
   const prevCpIdx = useRef(0)
   const { stepCount, status, checkpoints } = agent
 
-  const [springs, api] = useSpring(() => ({
+  // Scale pulse on new checkpoint
+  const [scaleSpring, scaleApi] = useSpring(() => ({
     scale: 1,
     config: { tension: 400, friction: 20 },
   }))
 
-  // Pulse only when a NEW checkpoint arrives (not on mount)
+  // Opacity fade when done
+  const [opacitySpring, opacityApi] = useSpring(() => ({
+    opacity: 0.7,
+    config: { duration: 1000 },
+  }))
+
   useEffect(() => {
     if (lastCheckpointIndex > prevCpIdx.current) {
       prevCpIdx.current = lastCheckpointIndex
-      api.start({ scale: 1.4, onRest: () => api.start({ scale: 1 }) })
+      scaleApi.start({ scale: 1.4, onRest: () => scaleApi.start({ scale: 1 }) })
     }
-  }, [lastCheckpointIndex, api])
+  }, [lastCheckpointIndex, scaleApi])
+
+  useEffect(() => {
+    if (status === 'done') {
+      const t = setTimeout(() => {
+        opacityApi.start({ opacity: 0 })
+      }, 3000)
+      return () => clearTimeout(t)
+    } else {
+      opacityApi.start({ opacity: 0.7 })
+    }
+  }, [status, opacityApi])
 
   useFrame((_, delta) => {
     if (meshRef.current && status === 'working') {
@@ -40,13 +57,7 @@ export function ProgressRing({ agent, nodeRadius, lastCheckpointIndex }: Progres
 
   const innerR = nodeRadius + 0.12
   const outerR = nodeRadius + 0.22
-
-  let color = '#00f0ff'
-  let opacity = 0.7
-  if (status === 'done') {
-    color = '#22c55e'
-    opacity = 0.9
-  }
+  const color = status === 'done' ? '#22c55e' : '#00f0ff'
 
   const label = checkpoints.length > 0
     ? `${stepCount} steps · ${checkpoints.length} ✓`
@@ -54,9 +65,14 @@ export function ProgressRing({ agent, nodeRadius, lastCheckpointIndex }: Progres
 
   return (
     <Billboard>
-      <animated.mesh ref={meshRef} scale={springs.scale}>
+      <animated.mesh ref={meshRef} scale={scaleSpring.scale}>
         <ringGeometry args={[innerR, outerR, 48]} />
-        <meshBasicMaterial color={color} transparent opacity={opacity} side={THREE.DoubleSide} />
+        <animated.meshBasicMaterial
+          color={color}
+          transparent
+          opacity={opacitySpring.opacity}
+          side={THREE.DoubleSide}
+        />
       </animated.mesh>
       <Text
         position={[0, outerR + 0.15, 0]}
