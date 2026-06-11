@@ -1,14 +1,32 @@
 // nexus-ui/src/components/AgentDetailView.tsx
 import { useEffect, useRef, useState, KeyboardEvent } from 'react'
 import { useNexusStore, sendWsMessage } from '../store'
+import { AGENT_COLORS } from '../types'
 import { NodeFlowPanel } from './NodeFlowPanel'
+import { useVoice } from '../hooks/useVoice'
 
 export function AgentDetailView() {
-  const selectedId = useNexusStore(s => s.selectedAgent)
+  const selectedId  = useNexusStore(s => s.selectedAgent)
   const selectAgent = useNexusStore(s => s.selectAgent)
-  const agent = useNexusStore(s => selectedId ? s.agents[selectedId] : null)
+  const agent       = useNexusStore(s => selectedId ? s.agents[selectedId] : null)
   const [input, setInput] = useState('')
+  const [mounted, setMounted] = useState(false)
   const termRef = useRef<HTMLDivElement>(null)
+
+  const color = AGENT_COLORS[selectedId ?? ''] ?? '#00f0ff'
+
+  const handleTranscript = (text: string) => {
+    if (!agent) return
+    sendWsMessage({ type: 'message', agent: agent.id, text })
+  }
+
+  const voice = useVoice(selectedId, handleTranscript)
+
+  // Entrance animation
+  useEffect(() => {
+    const t = setTimeout(() => setMounted(true), 50)
+    return () => clearTimeout(t)
+  }, [])
 
   useEffect(() => {
     termRef.current?.scrollTo({ top: termRef.current.scrollHeight, behavior: 'smooth' })
@@ -31,152 +49,173 @@ export function AgentDetailView() {
     if (e.key === 'Enter') handleSend()
   }
 
+  const handleMicClick = () => {
+    if (voice.isListening) {
+      voice.stopListening()
+    } else {
+      voice.startListening()
+    }
+  }
+
+  const statusDotColor = agent.status === 'working' ? color
+    : agent.status === 'thinking' ? '#7c3aed'
+    : agent.status === 'done' ? '#22c55e'
+    : '#334155'
+
   return (
-    <div style={styles.overlay}>
-      <div style={styles.panel}>
-        <div style={styles.header}>
-          <button style={styles.backBtn} onClick={() => selectAgent(null)}>← Back</button>
-          <span style={styles.agentTitle}>
-            {agent.name.toUpperCase()} <span style={styles.roleBadge}>• {agent.role}</span>
+    <div style={{
+      position: 'fixed',
+      inset: 0,
+      display: 'flex',
+      alignItems: 'center',
+      justifyContent: 'center',
+      zIndex: 100,
+      opacity: mounted ? 1 : 0,
+      transform: mounted ? 'scale(1)' : 'scale(0.92)',
+      transition: 'opacity 200ms cubic-bezier(0.16,1,0.3,1), transform 200ms cubic-bezier(0.16,1,0.3,1)',
+    }}>
+      <div style={{
+        width: 560,
+        maxHeight: '80vh',
+        background: 'rgba(8, 14, 28, 0.82)',
+        backdropFilter: 'blur(24px) saturate(1.4)',
+        border: `1px solid ${color}59`,
+        boxShadow: `0 0 0 1px ${color}1a, 0 0 40px ${color}26, inset 0 1px 0 rgba(255,255,255,0.06)`,
+        clipPath: 'polygon(8px 0%, calc(100% - 8px) 0%, 100% 8px, 100% calc(100% - 8px), calc(100% - 8px) 100%, 8px 100%, 0% calc(100% - 8px), 0% 8px)',
+        borderRadius: 4,
+        display: 'flex',
+        flexDirection: 'column',
+        overflow: 'hidden',
+        padding: '20px 24px',
+      }}>
+        {/* Header */}
+        <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 8 }}>
+          <button
+            onClick={() => { setMounted(false); setTimeout(() => selectAgent(null), 200) }}
+            style={{
+              background: 'none',
+              border: '1px solid #334155',
+              color: '#94a3b8',
+              borderRadius: 6,
+              padding: '4px 10px',
+              cursor: 'pointer',
+              fontSize: 12,
+            }}
+          >
+            ← Back
+          </button>
+          <span style={{
+            flex: 1,
+            fontFamily: 'Orbitron, sans-serif',
+            color,
+            fontWeight: 700,
+            fontSize: 13,
+            letterSpacing: '0.1em',
+          }}>
+            {agent.name.toUpperCase()}
+            <span style={{ color: '#475569', fontWeight: 400, fontFamily: 'Inter, sans-serif', letterSpacing: 0, marginLeft: 8 }}>
+              • {agent.role}
+            </span>
           </span>
-          <span style={styles.statusDot(agent.status)} />
+          <div style={{
+            width: 8, height: 8, borderRadius: '50%',
+            background: statusDotColor,
+            boxShadow: `0 0 6px ${statusDotColor}`,
+          }} />
         </div>
 
-        <div style={styles.divider} />
+        <div style={{ height: 1, background: '#1e293b', marginBottom: 8 }} />
 
         <NodeFlowPanel agent={agent} />
 
-        <div ref={termRef} style={styles.terminal}>
+        {/* Terminal */}
+        <div
+          ref={termRef}
+          style={{
+            flex: 1,
+            overflowY: 'auto',
+            fontFamily: 'JetBrains Mono, monospace',
+            fontSize: 12,
+            lineHeight: '1.6',
+            minHeight: 120,
+            maxHeight: 320,
+            paddingBottom: 8,
+          }}
+        >
           {agent.recentOutput.length === 0 ? (
-            <div style={styles.emptyLog}>No output yet…</div>
+            <div style={{ color: '#334155', fontStyle: 'italic', fontSize: 11 }}>No output yet…</div>
           ) : (
             agent.recentOutput.map((line, i) => (
-              <div key={i} style={styles.logLine(line)}>{line}</div>
+              <div key={i} style={{
+                color: (line.startsWith('Tool:') || line.startsWith('> Tool:')) ? color : '#e2e8f0',
+                whiteSpace: 'pre-wrap',
+                wordBreak: 'break-word',
+              }}>
+                {line}
+              </div>
             ))
           )}
         </div>
 
-        <div style={styles.divider} />
+        <div style={{ height: 1, background: '#1e293b', marginTop: 8, marginBottom: 10 }} />
 
-        <div style={styles.inputRow}>
+        {/* Input row */}
+        <div style={{ display: 'flex', gap: 8 }}>
           <input
-            style={styles.input}
+            style={{
+              flex: 1,
+              background: '#0f172a',
+              border: '1px solid #334155',
+              borderRadius: 6,
+              color: '#e2e8f0',
+              padding: '8px 12px',
+              fontSize: 13,
+              outline: 'none',
+              fontFamily: 'Inter, sans-serif',
+            }}
             value={input}
             onChange={e => setInput(e.target.value)}
             onKeyDown={handleKeyDown}
             placeholder={placeholder}
           />
-          <button style={styles.sendBtn} onClick={handleSend}>Send</button>
+
+          {voice.hasSpeechRecognition && (
+            <button
+              onClick={handleMicClick}
+              title={voice.isListening ? 'Stop recording' : 'Start voice input'}
+              style={{
+                background: voice.isListening ? `${color}22` : 'none',
+                border: `1px solid ${voice.isListening ? color : voice.isSpeaking ? '#f59e0b' : '#334155'}`,
+                color: voice.isListening ? color : voice.isSpeaking ? '#f59e0b' : '#94a3b8',
+                borderRadius: 6,
+                padding: '8px 12px',
+                cursor: 'pointer',
+                fontSize: 14,
+                transition: 'all 150ms',
+                boxShadow: voice.isListening ? `0 0 8px ${color}66` : 'none',
+              }}
+            >
+              {voice.isSpeaking ? '🔊' : '🎤'}
+            </button>
+          )}
+
+          <button
+            onClick={handleSend}
+            style={{
+              background: `${color}22`,
+              border: `1px solid ${color}66`,
+              color,
+              borderRadius: 6,
+              padding: '8px 16px',
+              cursor: 'pointer',
+              fontSize: 13,
+              fontWeight: 600,
+            }}
+          >
+            Send
+          </button>
         </div>
       </div>
     </div>
   )
-}
-
-const styles = {
-  overlay: {
-    position: 'fixed' as const,
-    inset: 0,
-    display: 'flex',
-    alignItems: 'center',
-    justifyContent: 'center',
-    background: 'rgba(5, 10, 20, 0.85)',
-    backdropFilter: 'blur(4px)',
-    zIndex: 100,
-  } satisfies React.CSSProperties,
-  panel: {
-    width: 540,
-    maxHeight: '80vh',
-    background: '#0d1117',
-    border: '1px solid #1e293b',
-    borderRadius: 12,
-    display: 'flex',
-    flexDirection: 'column' as const,
-    overflow: 'hidden',
-    padding: '16px 20px',
-    gap: 0,
-  } satisfies React.CSSProperties,
-  header: {
-    display: 'flex',
-    alignItems: 'center',
-    gap: 12,
-    marginBottom: 8,
-  } satisfies React.CSSProperties,
-  backBtn: {
-    background: 'none',
-    border: '1px solid #334155',
-    color: '#94a3b8',
-    borderRadius: 6,
-    padding: '4px 10px',
-    cursor: 'pointer',
-    fontSize: 12,
-  } satisfies React.CSSProperties,
-  agentTitle: {
-    flex: 1,
-    color: '#e2e8f0',
-    fontWeight: 700,
-    fontSize: 14,
-    letterSpacing: '0.08em',
-  } satisfies React.CSSProperties,
-  roleBadge: {
-    color: '#475569',
-    fontWeight: 400,
-  } satisfies React.CSSProperties,
-  statusDot: (status: string): React.CSSProperties => ({
-    width: 8,
-    height: 8,
-    borderRadius: '50%',
-    background: status === 'working' ? '#00f0ff' : status === 'thinking' ? '#7c3aed' : status === 'done' ? '#22c55e' : '#334155',
-  }),
-  divider: {
-    height: 1,
-    background: '#1e293b',
-    marginBottom: 10,
-    marginTop: 4,
-  } satisfies React.CSSProperties,
-  terminal: {
-    flex: 1,
-    overflowY: 'auto' as const,
-    fontFamily: 'monospace',
-    fontSize: 12,
-    lineHeight: '1.6',
-    minHeight: 120,
-    maxHeight: 320,
-    paddingBottom: 8,
-  } satisfies React.CSSProperties,
-  emptyLog: {
-    color: '#334155',
-    fontStyle: 'italic',
-    fontSize: 11,
-  } satisfies React.CSSProperties,
-  logLine: (line: string): React.CSSProperties => ({
-    color: (line.startsWith('Tool:') || line.startsWith('> Tool:')) ? '#00f0ff' : '#e2e8f0',
-    whiteSpace: 'pre-wrap' as const,
-    wordBreak: 'break-word' as const,
-  }),
-  inputRow: {
-    display: 'flex',
-    gap: 8,
-    marginTop: 10,
-  } satisfies React.CSSProperties,
-  input: {
-    flex: 1,
-    background: '#0f172a',
-    border: '1px solid #334155',
-    borderRadius: 6,
-    color: '#e2e8f0',
-    padding: '8px 12px',
-    fontSize: 13,
-    outline: 'none',
-  } satisfies React.CSSProperties,
-  sendBtn: {
-    background: '#00f0ff22',
-    border: '1px solid #00f0ff66',
-    color: '#00f0ff',
-    borderRadius: 6,
-    padding: '8px 16px',
-    cursor: 'pointer',
-    fontSize: 13,
-    fontWeight: 600,
-  } satisfies React.CSSProperties,
 }
