@@ -43,12 +43,6 @@ export function NexusScene() {
     setTimeout(() => setHover(null), 300)
   }, [])
 
-  const canvasStyle = {
-    background: '#020408',
-    filter: selectedAgent ? 'blur(3px) brightness(0.6)' : 'none',
-    transition: 'filter 300ms ease',
-  } as React.CSSProperties
-
   const ceoPos = AGENT_POSITIONS['ceo']!
 
   return (
@@ -59,7 +53,7 @@ export function NexusScene() {
 
       <Canvas
         camera={{ position: [0, 2, 10], fov: 60 }}
-        style={canvasStyle}
+        style={{ background: '#020408' }}
         gl={{ antialias: true, alpha: false }}
       >
         <Background />
@@ -101,6 +95,18 @@ export function NexusScene() {
         <CameraControls />
         <PostProcessing />
       </Canvas>
+
+      {/* Dark overlay when panel is open — DO NOT use CSS filter on canvas, it kills WebGL */}
+      {selectedAgent && (
+        <div style={{
+          position: 'fixed',
+          inset: 0,
+          background: 'rgba(2, 4, 8, 0.65)',
+          backdropFilter: 'blur(4px)',
+          zIndex: 90,
+          pointerEvents: 'none',
+        }} />
+      )}
 
       {/* DOM overlays */}
       {selectedAgent && <AgentDetailView />}
