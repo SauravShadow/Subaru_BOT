@@ -541,3 +541,19 @@ async def get_filler(context: str = ""):
     from app.services import bark_client
     audio = await bark_client.get_filler(context)
     return {"audio": audio}
+
+
+# ── SPA fallback (must be last) ────────────────────────────────────────────────
+
+from fastapi.responses import FileResponse as _FileResponse
+from pathlib import Path as _Path
+
+_STATIC_DIR = _Path(__file__).parent.parent / "static"
+
+
+@router.get("/{full_path:path}")
+async def spa_fallback(full_path: str):
+    """Catch-all: serve index.html for any unmatched GET (SPA client-side routing)."""
+    del full_path  # unused — route is catch-all
+    index = _STATIC_DIR / "index.html"
+    return _FileResponse(str(index))
