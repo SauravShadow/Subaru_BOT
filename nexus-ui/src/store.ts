@@ -160,8 +160,17 @@ export const useNexusStore = create<NexusStore>((set) => ({
 
         case 'assistant': {
           if (!agentId) break
-          const content = (event.message as { content?: string })?.content ?? ''
-          if (!content) break
+          const raw = (event.message as { content?: unknown })?.content
+          let content = ''
+          if (typeof raw === 'string') {
+            content = raw
+          } else if (Array.isArray(raw)) {
+            content = (raw as Array<{ type?: string; text?: string }>)
+              .filter(b => b.type === 'text')
+              .map(b => b.text ?? '')
+              .join('')
+          }
+          if (!content.trim()) break
           const prev3 = agents[agentId] ?? defaultAgent(agentId)
           updateAgent(agentId, {
             recentOutput: [...prev3.recentOutput, content].slice(-500)

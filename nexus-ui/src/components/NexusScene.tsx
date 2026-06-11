@@ -12,6 +12,7 @@ import { CommandPalette } from './CommandPalette'
 import { SmartIsland } from './SmartIsland'
 import { HoverCard } from './HoverCard'
 import { ModelPill } from './ModelPill'
+import { OpsDrawer } from './OpsDrawer'
 import { useNexusStore } from '../store'
 import { AGENT_POSITIONS } from '../types'
 import { useCommandPalette } from '../hooks/useCommandPalette'
@@ -31,6 +32,7 @@ export function NexusScene() {
   const selectedAgent = useNexusStore(s => s.selectedAgent)
 
   const [hover, setHover] = useState<HoverState | null>(null)
+  const [opsOpen, setOpsOpen] = useState(false)
   const { isSpeaking } = useVoice(null, () => {})
 
   const palette = useCommandPalette()
@@ -50,6 +52,32 @@ export function NexusScene() {
       {/* HUD layer — always on top of canvas */}
       <ModelPill />
       <SmartIsland />
+
+      {/* OPS button — top-left, below ModelPill */}
+      <button
+        onClick={() => setOpsOpen(o => !o)}
+        style={{
+          position: 'fixed',
+          top: 52,
+          left: 16,
+          background: opsOpen ? 'rgba(0,240,255,0.15)' : 'rgba(8,14,28,0.85)',
+          border: `1px solid ${opsOpen ? '#00f0ff88' : '#1e293b'}`,
+          color: opsOpen ? '#00f0ff' : '#64748b',
+          borderRadius: 6,
+          padding: '4px 10px',
+          fontSize: 10,
+          fontFamily: 'Orbitron, sans-serif',
+          letterSpacing: '0.1em',
+          cursor: 'pointer',
+          zIndex: 150,
+          backdropFilter: 'blur(8px)',
+          transition: 'all 150ms',
+        }}
+      >
+        OPS
+      </button>
+
+      <OpsDrawer open={opsOpen} onClose={() => setOpsOpen(false)} />
 
       <Canvas
         camera={{ position: [0, 2, 10], fov: 60 }}
