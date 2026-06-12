@@ -125,3 +125,46 @@ def test_step_counters_reset_on_new_ceo_task():
     assert "ws_t7:backend" not in _step_counters
     assert "ws_t7:frontend" not in _step_counters
     assert _step_counters.get("ws_other:backend") == 3
+
+
+def test_ceo_end_emits_queue_from_delegations():
+    from app.api.websocket import _queue_updates, _queues
+    _queues.clear()
+    event = _evt(
+        "on_chain_end", "ceo_node",
+        metadata={"langgraph_checkpoint_ns": "ceo_node"},
+        data={"output": {"ceo_response": "ok", "delegations": [
+            {"agent": "backend", "task": "build api"},
+            {"agent": "qa", "task": "write tests"},
+        ]}},
+    )
+    msg = _queue_updates(event, "ws_q1")
+    assert msg["type"] == "queue_update"
+    assert len(msg["queue"]) == 2
+    assert msg["queue"][0] == {
+        "id": "ws_q1:0", "task": "build api", "status": "active", "agent": "backend",
+    }
+
+
+def test_worker_output_end_marks_completed():
+    from app.api.websocket import _queue_updates, _queues
+    _queues.clear()
+    _queues["ws_q2"] = [
+        {"id": "ws_q2:0", "task": "build api", "status": "active", "agent": "backend"},
+    ]
+    event = _evt(
+        "on_chain_end", "output_node",
+        metadata={"langgraph_checkpoint_ns": "backend:sub1"},
+        data={"output": {}},
+    )
+    msg = _queue_updates(event, "ws_q2")
+    assert msg["type"] == "queue_update"
+    assert msg["queue"][0]["status"] == "completed"
+
+
+def test_non_queue_events_return_none():
+    from app.api.websocket import _queue_updates
+    event = _evt("on_tool_start", "bash",
+                 metadata={"langgraph_checkpoint_ns": "backend:x"},
+                 data={"input": {"command": "ls"}})
+    assert _queue_updates(event, "ws_q3") is None

@@ -18,6 +18,7 @@ logger = logging.getLogger(__name__)
 
 _step_counters: dict[str, int] = {}        # f"{thread_id}:{agent_id}" → count
 _checkpoint_counters: dict[str, int] = {}  # f"{thread_id}:{agent_id}" → count
+_queues: dict[str, list[dict]] = {}        # thread_id → live work-queue items
 
 _DONE_RE = re.compile(r'\[DONE:\s*([^\]]{1,120})\]')
 
@@ -115,6 +116,39 @@ def _translate_event(event: dict, thread_id: str) -> dict | None:
     return None
 
 
+def _queue_updates(event: dict, thread_id: str) -> dict | None:
+    """Maintain a per-thread work queue from delegations; emit queue_update."""
+    kind = event.get("event", "")
+    name = event.get("name", "")
+    data = event.get("data", {})
+
+    if kind == "on_chain_end" and name == "ceo_node":
+        output = data.get("output") or {}
+        delegations = output.get("delegations", []) if isinstance(output, dict) else []
+        _queues[thread_id] = [
+            {"id": f"{thread_id}:{i}", "task": d["task"][:100],
+             "status": "active", "agent": d["agent"]}
+            for i, d in enumerate(delegations)
+        ]
+        return {"type": "queue_update", "queue": _queues[thread_id],
+                "thread_id": thread_id}
+
+    if kind == "on_chain_end" and name == "output_node":
+        agent_id = _extract_agent_id(event.get("metadata", {}))
+        queue = _queues.get(thread_id)
+        if not queue:
+            return None
+        changed = False
+        for item in queue:
+            if item["agent"] == agent_id and item["status"] == "active":
+                item["status"] = "completed"
+                changed = True
+        if changed:
+            return {"type": "queue_update", "queue": queue, "thread_id": thread_id}
+
+    return None
+
+
 # ── Sessions + active runs ─────────────────────────────────────────────────────
 
 class Session:
@@ -176,12 +210,16 @@ async def _run_and_stream(task: str, thread_id: str, model: str) -> None:
             msg = _translate_event(event, thread_id)
             if msg:
                 await broadcast_event(msg)
+            qmsg = _queue_updates(event, thread_id)
+            if qmsg:
+                await broadcast_event(qmsg)
     except asyncio.CancelledError:
         pass
     except Exception as exc:
         logger.exception("nexus_graph run error: %s", exc)
         await broadcast_event({"type": "error", "agent": "ceo", "message": str(exc)})
     finally:
+        _queues.pop(thread_id, None)
         bcast.unregister(thread_id)
 
 
