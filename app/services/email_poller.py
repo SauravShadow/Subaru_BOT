@@ -6,12 +6,29 @@ Email poller — thin IMAP poll loop dispatching emails to email_graph.
 import asyncio
 import logging
 import re
+from datetime import datetime
 from typing import Optional
 
 from app import config
 from app.services import email_inbox as inbox
 
 logger = logging.getLogger(__name__)
+
+_email_tasks: dict[str, dict] = {}  # thread_id → task summary (runtime cache)
+
+
+def _track_task(thread_id: str, email: dict, status: str) -> None:
+    _email_tasks[thread_id] = {
+        "id":      thread_id,
+        "subject": email.get("subject", "(no subject)"),
+        "from":    email.get("from_email", ""),
+        "status":  status,
+        "updated": datetime.now().isoformat(),
+    }
+
+
+def list_tasks() -> list[dict]:
+    return sorted(_email_tasks.values(), key=lambda t: t["updated"], reverse=True)[:20]
 
 _AUTOMATED_SENDERS = frozenset(["noreply", "no-reply", "mailer-daemon", "postmaster"])
 _AUTOMATED_SUBJECTS = re.compile(
@@ -80,6 +97,8 @@ async def poll_once(email_graph) -> None:
         try:
             cfg = {"configurable": {"thread_id": thread_id}}
             graph_state = await email_graph.aget_state(cfg)
+            _track_task(thread_id, email,
+                        "resuming" if graph_state.next else "processing")
             if graph_state.next:
                 reply_body = _extract_reply_body(email.get("body", ""))
                 await email_graph.ainvoke({"user_reply": reply_body}, cfg)
@@ -92,7 +111,11 @@ async def poll_once(email_graph) -> None:
                     },
                     cfg,
                 )
+            new_state = await email_graph.aget_state(cfg)
+            _track_task(thread_id, email,
+                        "waiting_reply" if new_state.next else "done")
         except Exception as exc:
+            _track_task(thread_id, email, "error")
             logger.warning("email dispatch error for %s: %s", thread_id, exc)
 
 

@@ -65,3 +65,17 @@ async def test_verify_node_sets_unverified_for_unknown():
     state["email"] = {**state["email"], "from_email": "stranger@example.com"}
     result = await verify_node(state, {})
     assert result["verified"] is False
+
+
+def test_email_task_tracking_records_and_lists():
+    from app.services import email_poller as ep
+    ep._email_tasks.clear()
+    ep._track_task("email_abc", {"subject": "Deploy app", "from_email": "x@y.com"},
+                   status="processing")
+    ep._track_task("email_abc", {"subject": "Deploy app", "from_email": "x@y.com"},
+                   status="waiting_reply")
+    tasks = ep.list_tasks()
+    assert len(tasks) == 1
+    assert tasks[0]["id"] == "email_abc"
+    assert tasks[0]["status"] == "waiting_reply"
+    assert tasks[0]["subject"] == "Deploy app"

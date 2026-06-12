@@ -129,7 +129,8 @@ async def api_email_inbox(max_emails: int = 5, folder: str = "INBOX", unread_onl
 
 @router.get("/api/email-tasks")
 async def api_email_tasks():
-    return []
+    from app.services import email_poller
+    return email_poller.list_tasks()
 
 
 @router.get("/api/task-history")
