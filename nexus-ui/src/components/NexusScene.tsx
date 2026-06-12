@@ -13,6 +13,9 @@ import { SmartIsland } from './SmartIsland'
 import { HoverCard } from './HoverCard'
 import { ModelPill } from './ModelPill'
 import { OpsDrawer } from './OpsDrawer'
+import { BrowserViewport } from './BrowserViewport'
+import { DesignPreviewPanel } from './DesignPreviewPanel'
+import { SystemVitals } from './SystemVitals'
 import { useNexusStore } from '../store'
 import { AGENT_POSITIONS } from '../types'
 import { useCommandPalette } from '../hooks/useCommandPalette'
@@ -52,6 +55,9 @@ export function NexusScene() {
       {/* HUD layer — always on top of canvas */}
       <ModelPill />
       <SmartIsland />
+      <BrowserViewport />
+      <DesignPreviewPanel />
+      <SystemVitals />
 
       {/* OPS button — top-left, below ModelPill */}
       <button
