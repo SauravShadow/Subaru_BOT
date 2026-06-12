@@ -1,6 +1,6 @@
 # Pipeline Repairs & UI Connectivity Implementation Plan
 
-> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
+> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [x]`) syntax for tracking.
 
 **Goal:** Make every existing NEXUS backend feature actually work end-to-end and be visible in the UI — service recovery, memory fixes, direct worker chat, work queue, and handlers for all currently-dropped WS events.
 
@@ -19,7 +19,7 @@
 
 bark-svc and browser-svc exited 32h ago and never came back because no service has a restart policy.
 
-- [ ] **Step 1: Add restart policy to all three services**
+- [x] **Step 1: Add restart policy to all three services**
 
 In `docker-compose.yml`, add `restart: unless-stopped` under each of the three services (`app` top-level service with `container_name: virtual-company`, `bark-svc`, `browser-svc`), at the same indent level as `container_name`:
 
@@ -27,7 +27,7 @@ In `docker-compose.yml`, add `restart: unless-stopped` under each of the three s
     restart: unless-stopped
 ```
 
-- [ ] **Step 2: Recreate the stack**
+- [x] **Step 2: Recreate the stack**
 
 ```bash
 cd /mnt/HC_Volume_105874680/virtual-company
@@ -36,7 +36,7 @@ docker compose up -d
 
 Expected: all three containers report `Started` or `Running`.
 
-- [ ] **Step 3: Verify all three containers are up and healthy**
+- [x] **Step 3: Verify all three containers are up and healthy**
 
 ```bash
 docker ps --format "{{.Names}} {{.Status}}" | grep -E "virtual-company|bark|browser"
@@ -46,7 +46,7 @@ docker exec virtual-company curl -s -m 5 http://browser-svc:9002/health
 
 Expected: three `Up` lines; both health curls return JSON (both services define `GET /health`).
 
-- [ ] **Step 4: Confirm bark errors stopped**
+- [x] **Step 4: Confirm bark errors stopped**
 
 ```bash
 docker logs virtual-company --since 2m 2>&1 | grep -c "bark_client.speak failed" || echo OK
@@ -54,7 +54,7 @@ docker logs virtual-company --since 2m 2>&1 | grep -c "bark_client.speak failed"
 
 Expected: `0` or `OK`.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add docker-compose.yml
@@ -71,7 +71,7 @@ git commit -m "fix: restart policies so bark-svc/browser-svc survive reboots"
 
 The UI (SystemVitals, Task 12) needs one endpoint that reports app/bark/browser/email status.
 
-- [ ] **Step 1: Write the failing test**
+- [x] **Step 1: Write the failing test**
 
 Create `tests/test_health.py`:
 
@@ -105,12 +105,12 @@ async def test_health_reports_all_services(monkeypatch):
     assert "email" in body
 ```
 
-- [ ] **Step 2: Run test to verify it fails**
+- [x] **Step 2: Run test to verify it fails**
 
 Run: `python -m pytest tests/test_health.py -v`
 Expected: FAIL — `_probe_service` does not exist / 404 on `/api/health`.
 
-- [ ] **Step 3: Implement the endpoint**
+- [x] **Step 3: Implement the endpoint**
 
 In `app/api/router.py`, add directly above the `# ── SPA fallback` section (it must come before the catch-all):
 
@@ -143,12 +143,12 @@ async def api_health():
 
 Note: `config` and `asyncio` are already imported at the top of `router.py`. Confirm `config.BARK_SVC_URL` exists in `app/config.py` (env `BARK_SVC_URL` is set in docker-compose); `BROWSER_SVC_URL` is referenced at `router.py:468` already.
 
-- [ ] **Step 4: Run test to verify it passes**
+- [x] **Step 4: Run test to verify it passes**
 
 Run: `python -m pytest tests/test_health.py -v`
 Expected: PASS
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add app/api/router.py tests/test_health.py
@@ -165,7 +165,7 @@ git commit -m "feat: /api/health aggregate service status endpoint"
 
 Live logs show `fts5: syntax error near ","` (escape regex misses commas/colons/hyphens) and `database is locked` (no WAL, no busy timeout).
 
-- [ ] **Step 1: Write the failing tests**
+- [x] **Step 1: Write the failing tests**
 
 Append to `tests/test_memory.py`:
 
@@ -189,12 +189,12 @@ def test_query_with_commas_does_not_error(tmp_path, monkeypatch):
     assert rows and "trading" in rows[0]
 ```
 
-- [ ] **Step 2: Run tests to verify they fail**
+- [x] **Step 2: Run tests to verify they fail**
 
 Run: `python -m pytest tests/test_memory.py -v -k "fts_escape or commas"`
 Expected: FAIL — `_fts_escape` not defined; third test raises/returns [] via OperationalError path.
 
-- [ ] **Step 3: Implement**
+- [x] **Step 3: Implement**
 
 In `app/services/memory.py`, replace `_conn` and add WAL to `init_db`:
 
@@ -230,12 +230,12 @@ def _fts_escape(query: str) -> str:
         return []
 ```
 
-- [ ] **Step 4: Run the full memory test file**
+- [x] **Step 4: Run the full memory test file**
 
 Run: `python -m pytest tests/test_memory.py -v`
 Expected: ALL PASS (existing tests must keep passing — quoted-token AND semantics are a superset of the old behaviour for plain queries).
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add app/services/memory.py tests/test_memory.py
@@ -252,7 +252,7 @@ git commit -m "fix: FTS5 token escaping + WAL/busy_timeout for memory DB"
 
 The UI sends `{type:'message', agent:'backend', text}` from `AgentDetailView`, but the backend always runs the CEO graph. Messages to a specific worker must run that worker directly.
 
-- [ ] **Step 1: Write the failing test**
+- [x] **Step 1: Write the failing test**
 
 Append to `tests/test_websocket.py`:
 
@@ -300,12 +300,12 @@ async def test_run_direct_rejects_unknown_agent(monkeypatch):
     assert events and events[0]["type"] == "error"
 ```
 
-- [ ] **Step 2: Run tests to verify they fail**
+- [x] **Step 2: Run tests to verify they fail**
 
 Run: `python -m pytest tests/test_websocket.py -v -k run_direct`
 Expected: FAIL — `_run_direct` does not exist.
 
-- [ ] **Step 3: Implement `_run_direct`**
+- [x] **Step 3: Implement `_run_direct`**
 
 In `app/api/websocket.py`, add below `_run_and_stream`:
 
@@ -332,7 +332,7 @@ async def _run_direct(agent_id: str, task: str, model: str) -> None:
 
 Note: `run_agent` must be imported *inside* the function (as shown) so the test's `monkeypatch.setattr(runner, "run_agent", ...)` takes effect.
 
-- [ ] **Step 4: Route on the `agent` field**
+- [x] **Step 4: Route on the `agent` field**
 
 In `ws_endpoint`, replace the `if msg_type == "message":` branch:
 
@@ -350,12 +350,12 @@ In `ws_endpoint`, replace the `if msg_type == "message":` branch:
                 _active_runs[thread_id] = t
 ```
 
-- [ ] **Step 5: Run the websocket test file**
+- [x] **Step 5: Run the websocket test file**
 
 Run: `python -m pytest tests/test_websocket.py -v`
 Expected: ALL PASS.
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ```bash
 git add app/api/websocket.py tests/test_websocket.py
@@ -372,7 +372,7 @@ git commit -m "fix: direct 1:1 worker chat — honor agent field on ws messages"
 
 The UI's SmartIsland QUEUE tab listens for `queue_update` but the backend never sends it. Delegations are available in the `ceo_node` `on_chain_end` output.
 
-- [ ] **Step 1: Write the failing tests**
+- [x] **Step 1: Write the failing tests**
 
 Append to `tests/graph/test_event_translation.py` (reuse the `_evt` helper defined at the top of that file):
 
@@ -420,12 +420,12 @@ def test_non_queue_events_return_none():
     assert _queue_updates(event, "ws_q3") is None
 ```
 
-- [ ] **Step 2: Run tests to verify they fail**
+- [x] **Step 2: Run tests to verify they fail**
 
 Run: `python -m pytest tests/graph/test_event_translation.py -v -k queue`
 Expected: FAIL — `_queue_updates` not defined.
 
-- [ ] **Step 3: Implement**
+- [x] **Step 3: Implement**
 
 In `app/api/websocket.py`, below the `_checkpoint_counters` declarations add:
 
@@ -479,12 +479,12 @@ In `_run_and_stream`, inside the `async for event ...` loop, after the existing 
 
 And in the `finally:` block add `_queues.pop(thread_id, None)` before `bcast.unregister(thread_id)`.
 
-- [ ] **Step 4: Run the full translation test file**
+- [x] **Step 4: Run the full translation test file**
 
 Run: `python -m pytest tests/graph/test_event_translation.py -v`
 Expected: ALL PASS.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add app/api/websocket.py tests/graph/test_event_translation.py
@@ -501,7 +501,7 @@ git commit -m "feat: emit queue_update events — SmartIsland queue tab now live
 
 The email pipeline runs but is invisible: `/api/email-tasks` returns `[]` hardcoded.
 
-- [ ] **Step 1: Write the failing test**
+- [x] **Step 1: Write the failing test**
 
 Append to `tests/graph/test_email_graph.py`:
 
@@ -520,12 +520,12 @@ def test_email_task_tracking_records_and_lists():
     assert tasks[0]["subject"] == "Deploy app"
 ```
 
-- [ ] **Step 2: Run test to verify it fails**
+- [x] **Step 2: Run test to verify it fails**
 
 Run: `python -m pytest tests/graph/test_email_graph.py -v -k tracking`
 Expected: FAIL — `_email_tasks` / `_track_task` not defined.
 
-- [ ] **Step 3: Implement tracking in `email_poller.py`**
+- [x] **Step 3: Implement tracking in `email_poller.py`**
 
 Add near the top of `app/services/email_poller.py` (it already imports `logging`; add `from datetime import datetime` to imports):
 
@@ -576,7 +576,7 @@ In `poll_once`, inside the `for email in emails:` loop, instrument both branches
             logger.warning("email dispatch error for %s: %s", thread_id, exc)
 ```
 
-- [ ] **Step 4: Wire the endpoint**
+- [x] **Step 4: Wire the endpoint**
 
 In `app/api/router.py`, replace the stub at lines 130-132:
 
@@ -587,12 +587,12 @@ async def api_email_tasks():
     return email_poller.list_tasks()
 ```
 
-- [ ] **Step 5: Run tests**
+- [x] **Step 5: Run tests**
 
 Run: `python -m pytest tests/graph/test_email_graph.py -v`
 Expected: ALL PASS.
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ```bash
 git add app/services/email_poller.py app/api/router.py tests/graph/test_email_graph.py
@@ -608,7 +608,7 @@ git commit -m "feat: live email-task tracking — /api/email-tasks returns real 
 
 One task because all changes land in two files and ship atomically. No unit-test runner is configured for nexus-ui; verification is `npm run build` (tsc) + the E2E task.
 
-- [ ] **Step 1: Extend types.ts**
+- [x] **Step 1: Extend types.ts**
 
 In `nexus-ui/src/types.ts`, extend the `Notification` type union and add `BrowserView`:
 
@@ -632,7 +632,7 @@ export interface BrowserView {
 
 (Keep all existing exports. If `Notification` already exists, only widen its `type` union.)
 
-- [ ] **Step 2: Add store fields + actions**
+- [x] **Step 2: Add store fields + actions**
 
 In `nexus-ui/src/store.ts`, add to the `NexusStore` interface:
 
@@ -662,7 +662,7 @@ Import `BrowserView` from `./types`. Add the initial values + actions in the `cr
   setPendingApprovals: (n) => set({ pendingApprovals: n }),
 ```
 
-- [ ] **Step 3: Patch the assistant case to keep image blocks**
+- [x] **Step 3: Patch the assistant case to keep image blocks**
 
 Replace the body of `case 'assistant'` content extraction so image blocks become renderable markers instead of being dropped:
 
@@ -691,7 +691,7 @@ Replace the body of `case 'assistant'` content extraction so image blocks become
         }
 ```
 
-- [ ] **Step 4: Add the missing event cases**
+- [x] **Step 4: Add the missing event cases**
 
 Inside the same `switch (type)`, add before the final `case 'done'`:
 
@@ -764,7 +764,7 @@ Inside the same `switch (type)`, add before the final `case 'done'`:
           return { agents, edges, notifications, pendingApprovals: Math.max(0, state.pendingApprovals - 1) }
 ```
 
-- [ ] **Step 5: Add the speech-fallback emitter**
+- [x] **Step 5: Add the speech-fallback emitter**
 
 Below the existing audio listener block in `store.ts` (module level, next to `onAudioEvent`):
 
@@ -792,12 +792,12 @@ In `connectWebSocket`'s `onmessage`, after `useNexusStore.getState().handleEvent
       }
 ```
 
-- [ ] **Step 6: Typecheck**
+- [x] **Step 6: Typecheck**
 
 Run: `cd nexus-ui && npx tsc --noEmit`
 Expected: no errors.
 
-- [ ] **Step 7: Commit**
+- [x] **Step 7: Commit**
 
 ```bash
 git add nexus-ui/src/types.ts nexus-ui/src/store.ts
@@ -813,7 +813,7 @@ git commit -m "feat(ui): handle all backend WS events — browser frames, images
 
 When Bark is down (`bark_ok` false), responses must still be spoken via the browser's built-in `speechSynthesis` — zero server cost.
 
-- [ ] **Step 1: Subscribe to the fallback channel**
+- [x] **Step 1: Subscribe to the fallback channel**
 
 In `useVoice.ts`, import the new emitter and add an effect after the existing audio-listener effect:
 
@@ -845,12 +845,12 @@ import { onAudioEvent, offAudioEvent, onSpeechFallback, offSpeechFallback } from
   }, [ttsEnabled])
 ```
 
-- [ ] **Step 2: Typecheck**
+- [x] **Step 2: Typecheck**
 
 Run: `cd nexus-ui && npx tsc --noEmit`
 Expected: no errors.
 
-- [ ] **Step 3: Commit**
+- [x] **Step 3: Commit**
 
 ```bash
 git add nexus-ui/src/hooks/useVoice.ts
@@ -866,7 +866,7 @@ git commit -m "feat(ui): speechSynthesis fallback when Bark audio unavailable"
 
 Panels are empty on reload (`/api/chat/{id}/history` never fetched) and generated images (Task 7's ` img:` markers) need rendering.
 
-- [ ] **Step 1: Hydrate history on open**
+- [x] **Step 1: Hydrate history on open**
 
 In `AgentDetailView.tsx`, add a store action call via direct mutation of agent output. Add this effect after the entrance-animation effect (uses `useNexusStore.setState` — import is already there via `useNexusStore`):
 
@@ -897,7 +897,7 @@ In `AgentDetailView.tsx`, add a store action call via direct mutation of agent o
   }, [selectedId])
 ```
 
-- [ ] **Step 2: Render image markers and user lines in the terminal**
+- [x] **Step 2: Render image markers and user lines in the terminal**
 
 Replace the terminal line renderer (the `agent.recentOutput.map(...)` block):
 
@@ -931,7 +931,7 @@ Replace the terminal line renderer (the `agent.recentOutput.map(...)` block):
             })
 ```
 
-- [ ] **Step 3: Typecheck + commit**
+- [x] **Step 3: Typecheck + commit**
 
 ```bash
 cd nexus-ui && npx tsc --noEmit && cd ..
@@ -949,7 +949,7 @@ git commit -m "feat(ui): hydrate chat history on open + render generated images"
 
 Live CDP frames already reach the store (Task 7). Show them.
 
-- [ ] **Step 1: Create the component**
+- [x] **Step 1: Create the component**
 
 ```tsx
 // nexus-ui/src/components/BrowserViewport.tsx
@@ -1010,11 +1010,11 @@ export function BrowserViewport() {
 }
 ```
 
-- [ ] **Step 2: Mount it**
+- [x] **Step 2: Mount it**
 
 In `NexusScene.tsx`: `import { BrowserViewport } from './BrowserViewport'` and render `<BrowserViewport />` next to `<ModelPill />` in the HUD layer.
 
-- [ ] **Step 3: Typecheck + commit**
+- [x] **Step 3: Typecheck + commit**
 
 ```bash
 cd nexus-ui && npx tsc --noEmit && cd ..
@@ -1032,7 +1032,7 @@ git commit -m "feat(ui): live browser viewport panel fed by browser_frame events
 
 The preview HTML is served at `/static/previews/index.html` (`browser.py:write_preview`); `design_preview_updated` now sets `designPreviewTs`.
 
-- [ ] **Step 1: Create the component**
+- [x] **Step 1: Create the component**
 
 ```tsx
 // nexus-ui/src/components/DesignPreviewPanel.tsx
@@ -1092,9 +1092,9 @@ export function DesignPreviewPanel() {
 }
 ```
 
-- [ ] **Step 2: Mount in `NexusScene.tsx`** (same pattern as Task 10): `<DesignPreviewPanel />` in the HUD layer.
+- [x] **Step 2: Mount in `NexusScene.tsx`** (same pattern as Task 10): `<DesignPreviewPanel />` in the HUD layer.
 
-- [ ] **Step 3: Typecheck + commit**
+- [x] **Step 3: Typecheck + commit**
 
 ```bash
 cd nexus-ui && npx tsc --noEmit && cd ..
@@ -1110,7 +1110,7 @@ git commit -m "feat(ui): live design preview panel on design_preview_updated"
 - Create: `nexus-ui/src/components/SystemVitals.tsx`
 - Modify: `nexus-ui/src/components/NexusScene.tsx`
 
-- [ ] **Step 1: Create the component** (polls `/api/health` + `/api/storage` every 60s — trivial server load)
+- [x] **Step 1: Create the component** (polls `/api/health` + `/api/storage` every 60s — trivial server load)
 
 ```tsx
 // nexus-ui/src/components/SystemVitals.tsx
@@ -1165,9 +1165,9 @@ export function SystemVitals() {
 }
 ```
 
-- [ ] **Step 2: Mount in `NexusScene.tsx`** HUD layer: `<SystemVitals />`.
+- [x] **Step 2: Mount in `NexusScene.tsx`** HUD layer: `<SystemVitals />`.
 
-- [ ] **Step 3: Typecheck + commit**
+- [x] **Step 3: Typecheck + commit**
 
 ```bash
 cd nexus-ui && npx tsc --noEmit && cd ..
@@ -1184,7 +1184,7 @@ git commit -m "feat(ui): system vitals strip — service health + disk usage"
 
 All endpoints already exist; this is pure UI. Keep the existing visual language (Orbitron headers, `#0f172a` cards).
 
-- [ ] **Step 1: Add tabs + state**
+- [x] **Step 1: Add tabs + state**
 
 In `OpsDrawer.tsx` change `type OpsTab = 'routines' | 'skills' | 'approvals' | 'email' | 'team'`, add tab buttons `EMAIL` and `TEAM`, and extend `fetchAll` to also load:
 
@@ -1200,7 +1200,7 @@ interface EmailTask { id: string; subject: string; from: string; status: string;
 interface AgentInfo { name: string; title: string; description: string }
 ```
 
-- [ ] **Step 2: Routines — create / delete / logs**
+- [x] **Step 2: Routines — create / delete / logs**
 
 Add handlers + a minimal creation form at the top of the routines tab:
 
@@ -1256,7 +1256,7 @@ Render in each routine card, next to RUN: `LOGS` button (`onClick={() => showLog
 
 The creation form (top of routines tab) — five inputs bound to `newRoutine` fields (id, name, schedule, agent, prompt) styled like the chat input, plus a `+ CREATE` button calling `createRoutine`.
 
-- [ ] **Step 3: Skills — rollback + delete buttons**
+- [x] **Step 3: Skills — rollback + delete buttons**
 
 In each learned-skill card add:
 
@@ -1273,7 +1273,7 @@ In each learned-skill card add:
                 </div>
 ```
 
-- [ ] **Step 4: EMAIL tab**
+- [x] **Step 4: EMAIL tab**
 
 ```tsx
         {!loading && tab === 'email' && (
@@ -1298,7 +1298,7 @@ In each learned-skill card add:
         )}
 ```
 
-- [ ] **Step 5: TEAM tab (hire/fire)**
+- [x] **Step 5: TEAM tab (hire/fire)**
 
 ```tsx
         {!loading && tab === 'team' && (
@@ -1356,7 +1356,7 @@ function HireForm({ onHired }: { onHired: () => void }) {
 
 (Note: hired agents appear in chat/history APIs immediately; they appear in the 3D scene after Plan B Task 2's dynamic roster.)
 
-- [ ] **Step 6: Approvals badge on the OPS button**
+- [x] **Step 6: Approvals badge on the OPS button**
 
 In `NexusScene.tsx`, read `const pendingApprovals = useNexusStore(s => s.pendingApprovals)` and inside the OPS `<button>` append:
 
@@ -1371,7 +1371,7 @@ In `NexusScene.tsx`, read `const pendingApprovals = useNexusStore(s => s.pending
 
 Also sync the badge when OpsDrawer fetches: in `OpsDrawer.fetchAll`'s `.then`, after `setApprovals(...)`, add `useNexusStore.getState().setPendingApprovals(Object.keys(a && typeof a === 'object' ? a : {}).length)` (import `useNexusStore` from `../store`).
 
-- [ ] **Step 7: Typecheck + commit**
+- [x] **Step 7: Typecheck + commit**
 
 ```bash
 cd nexus-ui && npx tsc --noEmit && cd ..
@@ -1385,7 +1385,7 @@ git commit -m "feat(ui): ops center — routines CRUD+logs, skill actions, email
 
 **Files:** none (build + verify)
 
-- [ ] **Step 1: Run the full backend test suite**
+- [x] **Step 1: Run the full backend test suite**
 
 ```bash
 cd /mnt/HC_Volume_105874680/virtual-company && python -m pytest tests/ -q
@@ -1393,7 +1393,7 @@ cd /mnt/HC_Volume_105874680/virtual-company && python -m pytest tests/ -q
 
 Expected: all pass. Fix any regression before continuing.
 
-- [ ] **Step 2: Production build**
+- [x] **Step 2: Production build**
 
 ```bash
 cd nexus-ui && npm run build
@@ -1401,13 +1401,13 @@ cd nexus-ui && npm run build
 
 Expected: vite build success, output in `app/static/`.
 
-- [ ] **Step 3: Rebuild + restart the app container**
+- [x] **Step 3: Rebuild + restart the app container**
 
 ```bash
 cd /mnt/HC_Volume_105874680/virtual-company && docker compose up -d --build
 ```
 
-- [ ] **Step 4: End-to-end verification (per deployment-verification practice: container first, then endpoints, then UI)**
+- [x] **Step 4: End-to-end verification (per deployment-verification practice: container first, then endpoints, then UI)**
 
 ```bash
 docker ps --format "{{.Names}} {{.Status}}" | grep -E "virtual-company|bark|browser"
@@ -1418,9 +1418,9 @@ curl -s -m 5 http://127.0.0.1:3031/ | grep -o '<title>[^<]*'
 
 Expected: 3 containers Up; health JSON with `"bark":true,"browser":true`; email-tasks returns an array; HTML title served.
 
-- [ ] **Step 5: Browser smoke test** — open the dashboard, send a CEO task ("create a hello.txt file"), confirm: queue appears in SmartIsland QUEUE tab, ModelPill changes with `backend_status`, worker panel shows steps, notification on completion. Open Reinhard's panel, send "what files did you touch?" and confirm the reply comes from Reinhard (direct chat), not a CEO delegation.
+- [x] **Step 5: Browser smoke test** — open the dashboard, send a CEO task ("create a hello.txt file"), confirm: queue appears in SmartIsland QUEUE tab, ModelPill changes with `backend_status`, worker panel shows steps, notification on completion. Open Reinhard's panel, send "what files did you touch?" and confirm the reply comes from Reinhard (direct chat), not a CEO delegation.
 
-- [ ] **Step 6: Commit any fixes + final build artifact**
+- [x] **Step 6: Commit any fixes + final build artifact**
 
 ```bash
 git add -A && git commit -m "build: pipeline repairs + UI connectivity production build"
