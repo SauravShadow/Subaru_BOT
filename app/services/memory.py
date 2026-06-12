@@ -12,13 +12,15 @@ DB_PATH = config.MEMORY_DB
 
 
 def _conn() -> sqlite3.Connection:
-    c = sqlite3.connect(str(DB_PATH))
+    c = sqlite3.connect(str(DB_PATH), timeout=5.0)
     c.row_factory = sqlite3.Row
+    c.execute("PRAGMA busy_timeout=5000")
     return c
 
 
 def init_db() -> None:
     with _conn() as c:
+        c.execute("PRAGMA journal_mode=WAL")
         c.executescript("""
             CREATE TABLE IF NOT EXISTS memories (
                 id          INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -61,16 +63,18 @@ def save_memory(
         )
 
 
+def _fts_escape(query: str) -> str:
+    """Tokenize to alphanumerics and quote each token — immune to FTS5 syntax."""
+    tokens = re.findall(r"[A-Za-z0-9_]+", query)
+    return " ".join(f'"{t}"' for t in tokens)
+
+
 def get_relevant_memories(agent_id: str, query: str, limit: int = 5) -> list[str]:
     if not query.strip():
         return []
-    # Escape FTS5 special characters by wrapping in phrase quotes only when needed.
-    # This prevents syntax errors from punctuation like apostrophes, question marks,
-    # dots (domain names), and other FTS5 special characters.
-    if re.search(r"""['"?*+()\[\].]""", query):
-        escaped_query = '"' + query.replace('"', '""') + '"'
-    else:
-        escaped_query = query
+    escaped_query = _fts_escape(query)
+    if not escaped_query:
+        return []
     try:
         with _conn() as c:
             rows = c.execute("""

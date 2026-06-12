@@ -76,3 +76,22 @@ def test_get_relevant_memories_handles_fts5_operator_characters(mem):
     mem.save_memory("maya", "Looking for C++ backend engineers in Bangalore")
     results = mem.get_relevant_memories("maya", "C++ backend")
     assert any("C++" in r for r in results)
+
+
+def test_fts_escape_handles_commas_and_colons():
+    from app.services.memory import _fts_escape
+    assert _fts_escape('deploy app, port 3030: done') == '"deploy" "app" "port" "3030" "done"'
+
+
+def test_fts_escape_empty_punctuation_only():
+    from app.services.memory import _fts_escape
+    assert _fts_escape('?!,;') == ''
+
+
+def test_query_with_commas_does_not_error(tmp_path, monkeypatch):
+    from app.services import memory
+    monkeypatch.setattr(memory, "DB_PATH", tmp_path / "mem.db")
+    memory.init_db()
+    memory.save_memory("ceo", "deployed trading dashboard on port 8002")
+    rows = memory.get_relevant_memories("ceo", "trading, dashboard: port")
+    assert rows and "trading" in rows[0]
