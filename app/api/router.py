@@ -543,6 +543,32 @@ async def get_filler(context: str = ""):
     return {"audio": audio}
 
 
+# ── Health ─────────────────────────────────────────────────────────────────────
+
+async def _probe_service(url: str) -> bool:
+    import httpx
+    try:
+        async with httpx.AsyncClient(timeout=2.0) as client:
+            r = await client.get(url)
+            return r.status_code == 200
+    except Exception:
+        return False
+
+
+@router.get("/api/health")
+async def api_health():
+    bark_ok, browser_ok = await asyncio.gather(
+        _probe_service(f"{config.BARK_SVC_URL}/health"),
+        _probe_service(f"{config.BROWSER_SVC_URL}/health"),
+    )
+    return {
+        "app":     True,
+        "bark":    bark_ok,
+        "browser": browser_ok,
+        "email":   all([config.SMTP_USER, config.SMTP_PASS, config.USER_EMAIL]),
+    }
+
+
 # ── SPA fallback (must be last) ────────────────────────────────────────────────
 
 from fastapi.responses import FileResponse as _FileResponse
