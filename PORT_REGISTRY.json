@@ -79,6 +79,16 @@
       "subdomain": "cid",
       "service": "",
       "note": ""
+    },
+    "8301": {
+      "subdomain": "",
+      "service": "",
+      "note": "freed — was wrongly assigned to pipeline-test"
+    },
+    "8501": {
+      "subdomain": "pipeline-test",
+      "service": "pipeline-test",
+      "note": "cwd:/home/subaru/projects/pipeline-test"
     }
   },
   "subdomains": {
@@ -95,7 +105,8 @@
     "quotes": 8085,
     "ping": 8400,
     "rezero": 8095,
-    "cid": 8600
+    "cid": 8600,
+    "pipeline-test": 8501
   },
   "reserved_ports": [
     80,

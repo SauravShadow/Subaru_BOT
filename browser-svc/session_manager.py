@@ -1,9 +1,26 @@
 import asyncio
+import os
+import socket
 from dataclasses import dataclass, field
 from enum import Enum
 from typing import Optional
+from urllib.parse import urlparse
 
-from playwright.async_api import async_playwright, Browser, BrowserContext, Page
+from patchright.async_api import async_playwright, Browser, BrowserContext, Page
+
+import logging
+logger = logging.getLogger(__name__)
+
+
+def _proxy_reachable(proxy_url: str, timeout: float = 2.0) -> bool:
+    try:
+        parsed = urlparse(proxy_url)
+        host = parsed.hostname
+        port = parsed.port or 1080
+        with socket.create_connection((host, port), timeout=timeout):
+            return True
+    except OSError:
+        return False
 
 
 class SlotState(str, Enum):
@@ -59,12 +76,27 @@ class SessionManager:
         slot = self._slots[slot_id]
         if slot.context is None:
             from stealth import random_ua, apply_stealth
-            slot.context = await self._browser.new_context(
-                viewport={"width": 1280, "height": 900},
-                user_agent=random_ua(),
-            )
+            ua = random_ua()
+            ctx_kwargs = {
+                "viewport": {"width": 1280, "height": 900},
+                "user_agent": ua,
+                # Match sec-ch-ua to the actual Chromium version shipped by patchright 1.60.x
+                # (Chrome 148). Mismatching version with UA is an Akamai detection signal.
+                "extra_http_headers": {
+                    "sec-ch-ua": '"Google Chrome";v="148", "Chromium";v="148", "Not_A Brand";v="99"',
+                    "sec-ch-ua-mobile": "?0",
+                    "sec-ch-ua-platform": '"Windows"',
+                },
+            }
+            proxy_url = os.environ.get("BROWSER_PROXY_URL")
+            if proxy_url and _proxy_reachable(proxy_url):
+                ctx_kwargs["proxy"] = {"server": proxy_url}
+                logger.info("Using proxy: %s", proxy_url)
+            elif proxy_url:
+                logger.warning("Proxy %s unreachable — using direct connection", proxy_url)
+            slot.context = await self._browser.new_context(**ctx_kwargs)
             try:
-                await apply_stealth(slot.context)
+                # patchright handles binary-level stealth; no JS patching needed
                 slot.page = await slot.context.new_page()
             except Exception:
                 await slot.context.close()

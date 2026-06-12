@@ -145,7 +145,7 @@ def _build_init_payload() -> dict:
     return {
         "type": "init",
         "agents": [
-            {"id": aid, "name": a["name"], "role": a["role"], "status": "idle"}
+            {"id": aid, "name": a["name"], "role": a.get("title", a.get("role", "")), "status": "idle"}
             for aid, a in agents.items()
         ],
         "work_queue": [],

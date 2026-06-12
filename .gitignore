@@ -6,3 +6,8 @@ __pycache__/
 market_data/
 app/static/previews/
 sidecar.log
+.superpowers/
+nexus_memory.db
+browser-svc/cv_default.pdf
+browser-svc/cv_exports/
+browser-svc/browser_profile.json

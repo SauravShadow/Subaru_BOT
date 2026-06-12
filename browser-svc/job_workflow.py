@@ -10,7 +10,7 @@ from typing import TYPE_CHECKING, Optional
 from urllib.parse import urlparse
 
 if TYPE_CHECKING:
-    from playwright.async_api import Page
+    from patchright.async_api import Page
     from session_manager import SlotInfo
 
 logger = logging.getLogger(__name__)
@@ -431,23 +431,90 @@ async def _login_naukri(page: "Page") -> bool:
     if not email or not password:
         logger.info("NAUKRI_EMAIL/NAUKRI_PASSWORD not set — skipping Naukri login")
         return False
+    # Already logged in: on dashboard, or on any naukri page (not login) with cookies intact.
+    # Redirect to mnjuser/homepage and verify — cheapest definitive check.
+    if "naukri.com" in page.url and "nlogin" not in page.url and page.url != "about:blank":
+        try:
+            r = await page.goto("https://www.naukri.com/mnjuser/homepage",
+                                wait_until="domcontentloaded", timeout=15000)
+            if "mnjuser" in page.url and (r is None or r.status < 400):
+                body_chk = (await page.inner_text("body"))[:200]
+                if "Access Denied" not in body_chk and "You don't have permission" not in body_chk:
+                    logger.info("Naukri: already logged in at %s", page.url)
+                    return True
+        except Exception:
+            pass
     try:
-        already = page.locator("a[title='My Naukri'], a:has-text('My Naukri')")
-        if await already.is_visible(timeout=2000):
-            return True
-    except Exception:
-        pass
-    try:
+        # Always visit homepage first — Akamai sets session cookies here that
+        # mark the session as legitimate before the login page is hit
+        await page.goto("https://www.naukri.com", wait_until="domcontentloaded", timeout=30000)
+        try:
+            hp_body = (await page.inner_text("body"))[:200]
+            logger.info("Naukri homepage loaded. URL=%s body_start=%s", page.url, hp_body[:80])
+        except Exception:
+            logger.info("Naukri homepage loaded. URL=%s", page.url)
+        await human_delay(1500, 2500)
+
         await page.goto("https://www.naukri.com/nlogin/login", wait_until="domcontentloaded", timeout=30000)
+
+        # Log what we got so failures are diagnosable
+        try:
+            body_snippet = (await page.inner_text("body"))[:300]
+            logger.info("Naukri login page body: %s", body_snippet[:100])
+        except Exception:
+            body_snippet = ""
+
+        _AKAMAI_PHRASES = [
+            "Access Denied",
+            "You don't have permission",
+            "you don't have permission",
+            "Request blocked",
+            "403 Forbidden",
+            "The request was blocked",
+        ]
+        if any(phrase in body_snippet for phrase in _AKAMAI_PHRASES):
+            logger.warning("Naukri login page blocked by Akamai. URL=%s body=%s", page.url, body_snippet[:150])
+            return False
+
+        # Form is rendered by React — can take 6-10s after domcontentloaded
+        await page.wait_for_selector("#usernameField", timeout=30000)
+        logger.info("Naukri: #usernameField found, filling credentials")
         await page.fill("#usernameField", email)
         await page.fill("#passwordField", password)
+        # Verify values were written
+        em_val = await page.input_value("#usernameField")
+        logger.info("Naukri: email filled=%s", em_val[:5])
         await human_delay(300, 700)
+        btn_count = await page.locator("button[type='submit']").count()
+        logger.info("Naukri: submit button count=%d, clicking", btn_count)
         await page.click("button[type='submit']")
-        await human_delay(2000, 3000)
-        logged_in = page.locator("a[title='My Naukri'], a:has-text('My Naukri')")
-        return await logged_in.is_visible(timeout=5000)
+        # Poll for redirect — through a residential proxy the form POST redirect
+        # can take up to 20s; wait_for_url with a short timeout misses it
+        for i in range(25):
+            await asyncio.sleep(1)
+            cur_url = page.url
+            if "mnjuser" in cur_url:
+                logger.info("Naukri login succeeded — URL: %s", cur_url)
+                return True
+            if i % 5 == 4:
+                logger.info("Naukri: still on %s after %ds", cur_url, i + 1)
+        try:
+            body_final = (await page.inner_text("body"))[:200]
+        except Exception:
+            body_final = ""
+        logger.warning("Naukri login: still on %s after 25s. body=%s", page.url, body_final[:100])
+        return False
     except Exception as exc:
-        logger.warning("Naukri login failed: %s", exc)
+        # Even if the selector timed out, the page may have already redirected
+        # to mnjuser/homepage (session still valid from a previous run).
+        if "mnjuser" in page.url:
+            logger.info("Naukri: session still valid despite error — URL: %s", page.url)
+            return True
+        try:
+            body = (await page.inner_text("body"))[:300]
+            logger.warning("Naukri login failed: %s | page body: %s", exc, body)
+        except Exception:
+            logger.warning("Naukri login failed: %s", exc)
         return False
 
 
@@ -468,6 +535,51 @@ async def discover_jobs_naukri(
         if href and href.startswith("http"):
             urls.append(href.split("?")[0])
     return list(dict.fromkeys(urls))
+
+
+async def _apply_naukri(page: "Page", profile: dict, cv_path: str) -> bool:
+    from stealth import human_delay
+    try:
+        logged_in = await _login_naukri(page)
+        if not logged_in:
+            logger.warning("Naukri apply skipped — not logged in")
+            return False
+        apply_btn = page.locator(
+            "button.apply-button, a.btn-apply, "
+            "button:has-text('Apply'), a:has-text('Apply Now'), "
+            "[data-ga-track*='Apply']"
+        ).first
+        if not await apply_btn.is_visible(timeout=5000):
+            logger.warning("Naukri apply button not found")
+            return False
+        await apply_btn.click()
+        await human_delay(2000, 3000)
+        # Handle confirmation modal / chatbot apply
+        for _ in range(5):
+            confirm = page.locator(
+                "button:has-text('Apply'), button:has-text('Apply Now'), "
+                "button:has-text('Submit'), button:has-text('Continue')"
+            ).first
+            success = page.locator(
+                ":has-text('Application submitted'), :has-text('Applied successfully'), "
+                ":has-text('You have applied'), :has-text('Thank you for applying')"
+            ).first
+            if await success.is_visible(timeout=2000):
+                return True
+            if await confirm.is_visible(timeout=2000):
+                await confirm.click()
+                await human_delay(1500, 2500)
+            else:
+                break
+        # Final success check
+        success = page.locator(
+            ":has-text('Application submitted'), :has-text('Applied successfully'), "
+            ":has-text('You have applied'), :has-text('Thank you for applying')"
+        ).first
+        return await success.is_visible(timeout=3000)
+    except Exception as exc:
+        logger.warning("Naukri apply failed: %s", exc)
+        return False
 
 
 async def discover_company_roles(

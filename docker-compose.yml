@@ -55,20 +55,24 @@ services:
     container_name: browser-svc
     restart: unless-stopped
     env_file: .env
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
     ports:
       # Bound to localhost only — the frontend reaches browser-svc through the
       # backend proxy (/api/browser-svc/*), not directly, so this stays internal.
       - "127.0.0.1:9002:9002"
     volumes:
-      - /mnt/HC_Volume_105874680/virtual-company/browser-svc/browser_profile.json:/app/browser_profile.json
-      - /mnt/HC_Volume_105874680/virtual-company/browser-svc/cv_exports:/app/cv_exports
-      # Default CV used by the browser service (mounted as cv_default.pdf in-container)
+      # Source mounted live so code changes don't require image rebuilds
+      - /home/subaru/projects/virtual-company/browser-svc:/app
+      # Files outside the browser-svc source tree
       - /mnt/HC_Volume_105874680/virtual-company/Saurav_CE_SE_.pdf:/app/cv_default.pdf:ro
-      # LaTeX template tailored and compiled locally with Tectonic for each application
       - /mnt/HC_Volume_105874680/virtual-company/cv_template.tex:/app/cv_template.tex:ro
     environment:
       - GEMINI_API_KEY=${GEMINI_API_KEY:-}
       - NEXUS_WS_URL=ws://virtual-company:3030/ws/browser-relay
+      # Set to a residential proxy to bypass Akamai IP blocks (e.g. naukri.com)
+      # Format: http://user:pass@host:port  or  socks5://host:port
+      - BROWSER_PROXY_URL=${BROWSER_PROXY_URL:-}
     healthcheck:
       test: ["CMD", "curl", "-f", "http://127.0.0.1:9002/health"]
       interval: 15s

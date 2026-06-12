@@ -55,6 +55,9 @@ async def lifespan(app: FastAPI):
 
 app = FastAPI(title="Shadow Garden Command Center", lifespan=lifespan)
 
+# Mount before include_router so /assets/... is resolved before the SPA catch-all
+app.mount("/assets", StaticFiles(directory=str(STATIC_DIR / "assets")), name="vite_assets")
+
 app.include_router(api_router_module.router)
 
 

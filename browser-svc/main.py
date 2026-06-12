@@ -158,14 +158,21 @@ async def discover_endpoint(req: DiscoverRequest, bg: BackgroundTasks):
         slot = await session_manager.acquire(slot_id)
         screencast_started = False
         try:
-            await session_manager.start_screencast(slot_id, relay)
-            screencast_started = True
-            if req.platform == "indeed":
-                urls = await discover_jobs_indeed(slot.page, req.keywords, req.location)
-            elif req.platform == "naukri":
+            if req.platform == "naukri":
+                # Naukri login uses form POST navigation which aborts when a CDP
+                # screencast session is open. Run discover (login + search) without
+                # screencast, then restart it for the apply phase so the browser
+                # board stays active during applications.
                 urls = await discover_jobs_naukri(slot.page, req.keywords, req.location)
+                await session_manager.start_screencast(slot_id, relay)
+                screencast_started = True
             else:
-                urls = await discover_jobs_linkedin(slot.page, req.keywords, req.location)
+                await session_manager.start_screencast(slot_id, relay)
+                screencast_started = True
+                if req.platform == "indeed":
+                    urls = await discover_jobs_indeed(slot.page, req.keywords, req.location)
+                else:
+                    urls = await discover_jobs_linkedin(slot.page, req.keywords, req.location)
             for url in urls:
                 await _apply_on_slot(slot, url, req.tailor_cv)
         except Exception:

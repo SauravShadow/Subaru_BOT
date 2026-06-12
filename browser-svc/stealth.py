@@ -3,13 +3,12 @@ import random
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
-    from playwright.async_api import Page, BrowserContext
+    from patchright.async_api import Page, BrowserContext
 
 _USER_AGENTS = [
-    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36",
-    "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36",
-    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.0.0 Safari/537.36",
-    "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36",
+    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/148.0.0.0 Safari/537.36",
+    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/148.0.0.0 Safari/537.36",
+    "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/148.0.0.0 Safari/537.36",
 ]
 
 _STEALTH_SCRIPT = """
@@ -32,11 +31,9 @@ def random_viewport() -> dict:
 
 
 async def apply_stealth(context: "BrowserContext") -> None:
-    try:
-        from playwright_stealth import stealth_async
-        await stealth_async(context)
-    except ImportError:
-        pass
+    # patchright already patches webdriver/CDP detection at the binary level.
+    # playwright_stealth's JS injections are a known Akamai detection signal, so
+    # we deliberately skip it and rely on patchright's native patching instead.
     await context.add_init_script(_STEALTH_SCRIPT)
 
 
