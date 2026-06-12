@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback, useRef } from 'react'
-import { onAudioEvent, offAudioEvent } from '../store'
+import { onAudioEvent, offAudioEvent, onSpeechFallback, offSpeechFallback } from '../store'
 
 const TTS_KEY = 'nexus-tts-enabled'
 
@@ -72,6 +72,28 @@ export function useVoice(_agentId: string | null, onTranscript: (text: string) =
     }
     onAudioEvent(cb)
     return () => offAudioEvent(cb)
+  }, [ttsEnabled])
+
+  // Web Speech fallback when Bark produced no audio
+  useEffect(() => {
+    if (!ttsEnabled) return
+    const cb = (text: string) => {
+      if (AudioQueue._playing) return                 // Bark audio wins
+      if (!('speechSynthesis' in window)) return
+      const clean = text
+        .replace(/```[\s\S]*?```/g, ' code block omitted ')
+        .replace(/[*_#>`]/g, '')
+        .slice(0, 300)
+      if (!clean.trim()) return
+      window.speechSynthesis.cancel()
+      const utter = new SpeechSynthesisUtterance(clean)
+      utter.rate = 1.05
+      utter.onstart = () => setIsSpeaking(true)
+      utter.onend = () => setIsSpeaking(false)
+      window.speechSynthesis.speak(utter)
+    }
+    onSpeechFallback(cb)
+    return () => offSpeechFallback(cb)
   }, [ttsEnabled])
 
   const startListening = useCallback(() => {
