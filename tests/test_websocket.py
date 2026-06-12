@@ -39,3 +39,45 @@ async def test_handle_browser_blocker_resolved_broadcasts_event():
         await ws_module.handle_browser_blocker_resolved(payload)
 
     mock_broadcast.assert_called_once_with(payload)
+
+
+@pytest.mark.asyncio
+async def test_run_direct_calls_worker_and_broadcasts_lifecycle(monkeypatch):
+    from app.api import websocket as ws_module
+
+    events = []
+
+    async def fake_broadcast(data):
+        events.append(data)
+
+    called = {}
+
+    async def fake_run_agent(agent_id, prompt, send, model="claude"):
+        called["agent"] = agent_id
+        called["prompt"] = prompt
+        return "done"
+
+    monkeypatch.setattr(ws_module, "broadcast_event", fake_broadcast)
+    import app.agents.runner as runner
+    monkeypatch.setattr(runner, "run_agent", fake_run_agent)
+
+    await ws_module._run_direct("backend", "fix the API", "claude")
+
+    assert called["agent"] == "backend"
+    types = [e["type"] for e in events]
+    assert types[0] == "delegation"
+    assert types[-1] == "worker_done"
+
+
+@pytest.mark.asyncio
+async def test_run_direct_rejects_unknown_agent(monkeypatch):
+    from app.api import websocket as ws_module
+
+    events = []
+
+    async def fake_broadcast(data):
+        events.append(data)
+
+    monkeypatch.setattr(ws_module, "broadcast_event", fake_broadcast)
+    await ws_module._run_direct("nonexistent_agent_xyz", "hi", "claude")
+    assert events and events[0]["type"] == "error"

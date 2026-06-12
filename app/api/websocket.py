@@ -185,6 +185,26 @@ async def _run_and_stream(task: str, thread_id: str, model: str) -> None:
         bcast.unregister(thread_id)
 
 
+async def _run_direct(agent_id: str, task: str, model: str) -> None:
+    """1:1 chat with a single agent — bypasses the CEO orchestration graph."""
+    if agent_id not in defs.all_agents():
+        await broadcast_event({"type": "error", "agent": "ceo",
+                               "message": f"Unknown agent '{agent_id}'"})
+        return
+    import app.agents.runner as runner
+    await broadcast_event({"type": "delegation", "agent": agent_id})
+    try:
+        await runner.run_agent(agent_id, task, broadcast_event, model)
+    except asyncio.CancelledError:
+        raise
+    except Exception as exc:
+        logger.exception("direct chat error for %s", agent_id)
+        await broadcast_event({"type": "error", "agent": agent_id,
+                               "message": str(exc)[:200]})
+    finally:
+        await broadcast_event({"type": "worker_done", "agent": agent_id})
+
+
 async def ws_endpoint(ws: WebSocket, model: str = "claude") -> None:
     session = Session(ws, model)
     thread_id = f"ws_{uuid4().hex}"
@@ -199,9 +219,15 @@ async def ws_endpoint(ws: WebSocket, model: str = "claude") -> None:
             msg_type = msg.get("type", "")
 
             if msg_type == "message":
-                t = asyncio.create_task(
-                    _run_and_stream(msg["text"], thread_id, session.model)
-                )
+                target = msg.get("agent") or "ceo"
+                if target == "ceo":
+                    t = asyncio.create_task(
+                        _run_and_stream(msg["text"], thread_id, session.model)
+                    )
+                else:
+                    t = asyncio.create_task(
+                        _run_direct(target, msg["text"], session.model)
+                    )
                 _active_runs[thread_id] = t
 
             elif msg_type == "cancel_worker":
