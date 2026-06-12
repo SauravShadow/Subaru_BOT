@@ -28,6 +28,31 @@ export function AgentDetailView() {
     return () => clearTimeout(t)
   }, [])
 
+  // Hydrate conversation history once, only if the terminal is empty
+  useEffect(() => {
+    if (!selectedId || !agent || agent.recentOutput.length > 0) return
+    fetch(`/api/chat/${selectedId}/history`)
+      .then(r => r.json())
+      .then((history: Array<{ role: string; content: string }>) => {
+        if (!Array.isArray(history) || history.length === 0) return
+        const lines = history.slice(-30).map(m =>
+          m.role === 'user' ? `> you: ${m.content}` : m.content)
+        useNexusStore.setState(s => ({
+          agents: {
+            ...s.agents,
+            [selectedId]: {
+              ...s.agents[selectedId],
+              recentOutput: s.agents[selectedId].recentOutput.length === 0
+                ? lines
+                : s.agents[selectedId].recentOutput,
+            },
+          },
+        }))
+      })
+      .catch(() => {})
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedId])
+
   useEffect(() => {
     termRef.current?.scrollTo({ top: termRef.current.scrollHeight, behavior: 'smooth' })
   }, [agent?.recentOutput.length])
@@ -145,15 +170,33 @@ export function AgentDetailView() {
           {agent.recentOutput.length === 0 ? (
             <div style={{ color: '#334155', fontStyle: 'italic', fontSize: 11 }}>No output yet…</div>
           ) : (
-            agent.recentOutput.map((line, i) => (
-              <div key={i} style={{
-                color: (line.startsWith('Tool:') || line.startsWith('> Tool:')) ? color : '#e2e8f0',
-                whiteSpace: 'pre-wrap',
-                wordBreak: 'break-word',
-              }}>
-                {line}
-              </div>
-            ))
+            agent.recentOutput.map((line, i) => {
+              if (line.startsWith(' img:')) {
+                const rest = line.slice(5)
+                const sep = rest.indexOf(':')
+                const mime = rest.slice(0, sep)
+                const data = rest.slice(sep + 1)
+                return (
+                  <img
+                    key={i}
+                    src={`data:${mime};base64,${data}`}
+                    alt="generated"
+                    style={{ maxWidth: '100%', borderRadius: 6, margin: '6px 0', border: `1px solid ${color}44` }}
+                  />
+                )
+              }
+              const isUser = line.startsWith('> you:')
+              return (
+                <div key={i} style={{
+                  color: (line.startsWith('Tool:') || line.startsWith('> Tool:')) ? color
+                    : isUser ? '#64748b' : '#e2e8f0',
+                  whiteSpace: 'pre-wrap',
+                  wordBreak: 'break-word',
+                }}>
+                  {line}
+                </div>
+              )
+            })
           )}
         </div>
 
