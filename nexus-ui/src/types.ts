@@ -44,6 +44,15 @@ export interface Notification {
   text: string
   ts: number
   type: 'done' | 'delegation' | 'queue' | 'message'
+      | 'routine' | 'email' | 'approval' | 'system'
+}
+
+export interface BrowserView {
+  image: string          // base64 (no data: prefix)
+  mime: 'image/jpeg' | 'image/png'
+  url: string
+  caption: string
+  ts: number
 }
 
 export const AGENT_POSITIONS: Record<string, [number, number, number]> = {

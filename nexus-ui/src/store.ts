@@ -1,5 +1,5 @@
 import { create } from 'zustand'
-import type { AgentState, EdgeState, Step, Checkpoint, WorkQueueItem, Notification, WsModel } from './types'
+import type { AgentState, EdgeState, Step, Checkpoint, WorkQueueItem, Notification, WsModel, BrowserView } from './types'
 
 const WORKER_IDS = ['backend', 'frontend', 'qa', 'devops', 'browser']
 
@@ -32,12 +32,20 @@ interface NexusStore {
   notifications: Notification[]
   islandExpanded: boolean
   islandTab: 'notifications' | 'queue' | 'active'
+  browserView: BrowserView | null
+  browserVisible: boolean
+  designPreviewTs: number | null
+  designPreviewVisible: boolean
+  pendingApprovals: number
 
   selectAgent: (id: string | null) => void
   setWsStatus: (s: 'connected' | 'offline') => void
   resetAgentStatus: (id: string) => void
   setIslandExpanded: (v: boolean) => void
   setIslandTab: (tab: 'notifications' | 'queue' | 'active') => void
+  setBrowserVisible: (v: boolean) => void
+  setDesignPreviewVisible: (v: boolean) => void
+  setPendingApprovals: (n: number) => void
   handleEvent: (event: Record<string, unknown>) => void
 }
 
@@ -53,6 +61,11 @@ export const useNexusStore = create<NexusStore>((set) => ({
   notifications: [],
   islandExpanded: false,
   islandTab: 'notifications',
+  browserView: null,
+  browserVisible: false,
+  designPreviewTs: null,
+  designPreviewVisible: false,
+  pendingApprovals: 0,
 
   selectAgent: (id) => set({ selectedAgent: id }),
   setWsStatus: (s) => set({ wsStatus: s }),
@@ -61,6 +74,9 @@ export const useNexusStore = create<NexusStore>((set) => ({
   })),
   setIslandExpanded: (v) => set({ islandExpanded: v }),
   setIslandTab: (tab) => set({ islandTab: tab, islandExpanded: true }),
+  setBrowserVisible: (v) => set({ browserVisible: v }),
+  setDesignPreviewVisible: (v) => set({ designPreviewVisible: v }),
+  setPendingApprovals: (n) => set({ pendingApprovals: n }),
 
   handleEvent: (event) => {
     const type = event.type as string
@@ -165,9 +181,12 @@ export const useNexusStore = create<NexusStore>((set) => ({
           if (typeof raw === 'string') {
             content = raw
           } else if (Array.isArray(raw)) {
-            content = (raw as Array<{ type?: string; text?: string }>)
-              .filter(b => b.type === 'text')
-              .map(b => b.text ?? '')
+            content = (raw as Array<{ type?: string; text?: string; media_type?: string; data?: string }>)
+              .map(b => {
+                if (b.type === 'text') return b.text ?? ''
+                if (b.type === 'image' && b.data) return ` img:${b.media_type ?? 'image/png'}:${b.data}`
+                return ''
+              })
               .join('')
           }
           if (!content.trim()) break
@@ -185,6 +204,73 @@ export const useNexusStore = create<NexusStore>((set) => ({
 
         case 'backend_switch':
           return { agents, edges, notifications, wsModel: event.model as WsModel }
+
+        case 'backend_status': {
+          const backend = event.backend as WsModel | undefined
+          if (backend) return { agents, edges, notifications, wsModel: backend }
+          break
+        }
+
+        case 'browser_navigated':
+          if (event.screenshot) {
+            return {
+              agents, edges, notifications,
+              browserVisible: true,
+              browserView: {
+                image: event.screenshot as string, mime: 'image/png' as const,
+                url: (event.url as string) ?? '', caption: (event.title as string) ?? '',
+                ts: Date.now(),
+              },
+            }
+          }
+          break
+
+        case 'browser_frame':
+          if (event.frame) {
+            return {
+              agents, edges, notifications,
+              browserVisible: true,
+              browserView: {
+                image: event.frame as string, mime: 'image/jpeg' as const,
+                url: (event.url as string) ?? '', caption: (event.action as string) ?? '',
+                ts: Date.now(),
+              },
+            }
+          }
+          break
+
+        case 'browser_result':
+          addNotif(`Maya: ${String(event.summary ?? event.message ?? 'browser job finished').slice(0, 80)}`, 'done')
+          break
+
+        case 'design_preview_updated':
+          addNotif('Design preview updated', 'system')
+          return { agents, edges, notifications, designPreviewTs: Date.now(), designPreviewVisible: true }
+
+        case 'routine_completed':
+          addNotif(`Routine ${event.routine_id}: ${event.status}`, 'routine')
+          break
+
+        case 'standup':
+          addNotif('Standup briefing generated', 'routine')
+          break
+
+        case 'email_sent':
+          addNotif(`Email sent: ${String(event.subject ?? '').slice(0, 60)}`, 'email')
+          break
+
+        case 'source_file_modified':
+          addNotif(`${event.agent} modified ${event.path} (${event.zone})`, 'system')
+          break
+
+        case 'approval_requested':
+          addNotif(`Approval needed: ${event.file_path}`, 'approval')
+          return { agents, edges, notifications, pendingApprovals: state.pendingApprovals + 1 }
+
+        case 'approval_applied':
+        case 'approval_denied':
+          addNotif(`Approval ${event.approval_id}: ${type === 'approval_applied' ? 'applied' : 'denied'}`, 'approval')
+          return { agents, edges, notifications, pendingApprovals: Math.max(0, state.pendingApprovals - 1) }
 
         case 'done':
           if (agentId) updateAgent(agentId, { status: 'idle' })
@@ -215,6 +301,16 @@ export function offAudioEvent(cb: AudioListener) {
   if (i >= 0) _audioListeners.splice(i, 1)
 }
 
+// Speech-synthesis fallback channel — fired when an assistant reply arrives
+// without Bark audio (bark_ok !== true). useVoice decides whether to speak it.
+type SpeechListener = (text: string) => void
+const _speechListeners: SpeechListener[] = []
+export function onSpeechFallback(cb: SpeechListener) { _speechListeners.push(cb) }
+export function offSpeechFallback(cb: SpeechListener) {
+  const i = _speechListeners.indexOf(cb)
+  if (i >= 0) _speechListeners.splice(i, 1)
+}
+
 export function connectWebSocket(model = 'claude'): void {
   if (_ws && (_ws.readyState === WebSocket.OPEN || _ws.readyState === WebSocket.CONNECTING)) return
 
@@ -238,6 +334,14 @@ export function connectWebSocket(model = 'claude'): void {
       }
 
       useNexusStore.getState().handleEvent(data)
+
+      if (data.type === 'assistant' && data.bark_ok !== true) {
+        const raw = (data.message as { content?: Array<{ type?: string; text?: string }> })?.content
+        const text = Array.isArray(raw)
+          ? raw.filter(b => b.type === 'text').map(b => b.text ?? '').join(' ')
+          : typeof raw === 'string' ? raw : ''
+        if (text.trim()) _speechListeners.forEach(cb => cb(text))
+      }
 
       // Stuck task guard
       const type = data.type as string
