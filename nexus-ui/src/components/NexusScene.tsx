@@ -33,6 +33,7 @@ export function NexusScene() {
   const agents        = useNexusStore(s => s.agents)
   const edges         = useNexusStore(s => s.edges)
   const selectedAgent = useNexusStore(s => s.selectedAgent)
+  const pendingApprovals = useNexusStore(s => s.pendingApprovals)
 
   const [hover, setHover] = useState<HoverState | null>(null)
   const [opsOpen, setOpsOpen] = useState(false)
@@ -80,7 +81,12 @@ export function NexusScene() {
           transition: 'all 150ms',
         }}
       >
-        OPS
+        OPS{pendingApprovals > 0 && (
+          <span style={{
+            marginLeft: 6, background: '#f59e0b', color: '#020408',
+            borderRadius: 8, padding: '0 5px', fontSize: 9, fontWeight: 700,
+          }}>{pendingApprovals}</span>
+        )}
       </button>
 
       <OpsDrawer open={opsOpen} onClose={() => setOpsOpen(false)} />

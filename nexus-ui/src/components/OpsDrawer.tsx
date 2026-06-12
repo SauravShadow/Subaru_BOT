@@ -1,7 +1,8 @@
 // nexus-ui/src/components/OpsDrawer.tsx
 import { useState, useEffect, useCallback } from 'react'
+import { useNexusStore } from '../store'
 
-type OpsTab = 'routines' | 'skills' | 'approvals'
+type OpsTab = 'routines' | 'skills' | 'approvals' | 'email' | 'team'
 
 interface Routine {
   id: string
@@ -28,7 +29,15 @@ interface Approval {
   created_at?: string
 }
 
+interface EmailTask { id: string; subject: string; from: string; status: string; updated: string }
+interface AgentInfo { name: string; title: string; description: string }
+
 const ACCENT = '#00f0ff'
+
+const routineInputStyle = {
+  background: '#0f172a', border: '1px solid #334155', borderRadius: 5,
+  color: '#e2e8f0', padding: '5px 8px', fontSize: 11, outline: 'none', width: '100%',
+} as const
 
 function TabButton({ label, active, onClick }: { label: string; active: boolean; onClick: () => void }) {
   return (
@@ -71,11 +80,41 @@ function StatusBadge({ status }: { status: string | null }) {
   )
 }
 
+function HireForm({ onHired }: { onHired: () => void }) {
+  const [form, setForm] = useState({ id: '', name: '', role: '', stack: '' })
+  const inputStyle = {
+    background: '#0f172a', border: '1px solid #334155', borderRadius: 5,
+    color: '#e2e8f0', padding: '5px 8px', fontSize: 11, outline: 'none', width: '100%',
+  } as const
+  const hire = async () => {
+    if (!form.id || !form.name || !form.role) return
+    await fetch('/api/hire', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ ...form, title: form.role }),
+    }).catch(() => null)
+    setForm({ id: '', name: '', role: '', stack: '' })
+    onHired()
+  }
+  return (
+    <div style={{ background: '#0f172a', border: '1px dashed #334155', borderRadius: 8, padding: 12, display: 'flex', flexDirection: 'column', gap: 6 }}>
+      <span style={{ fontFamily: 'Orbitron, sans-serif', color: '#64748b', fontSize: 10, letterSpacing: '0.1em' }}>HIRE CONTRACTOR</span>
+      <input style={inputStyle} placeholder="id (e.g. data_analyst)" value={form.id} onChange={e => setForm({ ...form, id: e.target.value })} />
+      <input style={inputStyle} placeholder="Name" value={form.name} onChange={e => setForm({ ...form, name: e.target.value })} />
+      <input style={inputStyle} placeholder="Role (e.g. Data Analyst)" value={form.role} onChange={e => setForm({ ...form, role: e.target.value })} />
+      <input style={inputStyle} placeholder="Stack (e.g. pandas, SQL)" value={form.stack} onChange={e => setForm({ ...form, stack: e.target.value })} />
+      <button onClick={hire} style={{ background: '#22c55e18', border: '1px solid #22c55e44', color: '#22c55e', borderRadius: 5, padding: '4px 0', fontSize: 11, cursor: 'pointer', fontFamily: 'Orbitron, sans-serif' }}>+ HIRE</button>
+    </div>
+  )
+}
+
 export function OpsDrawer({ open, onClose }: { open: boolean; onClose: () => void }) {
   const [tab, setTab] = useState<OpsTab>('routines')
   const [routines, setRoutines] = useState<Routine[]>([])
   const [skills, setSkills] = useState<{ tools: SkillEntry[]; learned: SkillEntry[] }>({ tools: [], learned: [] })
   const [approvals, setApprovals] = useState<Record<string, Approval>>({})
+  const [emailTasks, setEmailTasks] = useState<EmailTask[]>([])
+  const [agents, setAgents] = useState<Record<string, AgentInfo>>({})
   const [loading, setLoading] = useState(false)
   const [runningId, setRunningId] = useState<string | null>(null)
 
@@ -86,10 +125,15 @@ export function OpsDrawer({ open, onClose }: { open: boolean; onClose: () => voi
       fetch('/api/routines').then(r => r.json()).catch(() => []),
       fetch('/api/skills').then(r => r.json()).catch(() => ({ tools: [], learned: [] })),
       fetch('/api/approvals').then(r => r.json()).catch(() => ({})),
-    ]).then(([r, s, a]) => {
+      fetch('/api/email-tasks').then(r => r.json()).catch(() => []),
+      fetch('/api/agents').then(r => r.json()).catch(() => ({})),
+    ]).then(([r, s, a, e, ag]) => {
       setRoutines(Array.isArray(r) ? r : [])
       setSkills(s && typeof s === 'object' ? s : { tools: [], learned: [] })
       setApprovals(a && typeof a === 'object' ? a : {})
+      setEmailTasks(Array.isArray(e) ? e : [])
+      setAgents(ag && typeof ag === 'object' ? ag : {})
+      useNexusStore.getState().setPendingApprovals(Object.keys(a && typeof a === 'object' ? a : {}).length)
       setLoading(false)
     })
   }, [open])
@@ -100,6 +144,42 @@ export function OpsDrawer({ open, onClose }: { open: boolean; onClose: () => voi
     setRunningId(id)
     await fetch(`/api/routines/${id}/run`, { method: 'POST' }).catch(() => null)
     setTimeout(() => { setRunningId(null); fetchAll() }, 2000)
+  }
+
+  const [newRoutine, setNewRoutine] = useState({ id: '', name: '', agent: 'ceo', schedule: '0 9 * * *', prompt: '' })
+  const [logsFor, setLogsFor] = useState<string | null>(null)
+  const [logs, setLogs] = useState<Array<{ status: string; output: string; timestamp: string }>>([])
+
+  const createRoutine = async () => {
+    if (!newRoutine.id || !newRoutine.name || !newRoutine.prompt) return
+    await fetch('/api/routines', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(newRoutine),
+    }).catch(() => null)
+    setNewRoutine({ id: '', name: '', agent: 'ceo', schedule: '0 9 * * *', prompt: '' })
+    fetchAll()
+  }
+
+  const deleteRoutine = async (id: string) => {
+    await fetch(`/api/routines/${id}`, { method: 'DELETE' }).catch(() => null)
+    fetchAll()
+  }
+
+  const toggleRoutine = async (r: Routine) => {
+    await fetch(`/api/routines/${r.id}`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ enabled: !r.enabled }),
+    }).catch(() => null)
+    fetchAll()
+  }
+
+  const showLogs = async (id: string) => {
+    if (logsFor === id) { setLogsFor(null); return }
+    const data = await fetch(`/api/routines/${id}/logs?limit=5`).then(r => r.json()).catch(() => [])
+    setLogs(Array.isArray(data) ? data : [])
+    setLogsFor(id)
   }
 
   const applyApproval = async (id: string) => {
@@ -179,6 +259,8 @@ export function OpsDrawer({ open, onClose }: { open: boolean; onClose: () => voi
         <TabButton label="ROUTINES" active={tab === 'routines'} onClick={() => setTab('routines')} />
         <TabButton label="SKILLS" active={tab === 'skills'} onClick={() => setTab('skills')} />
         <TabButton label={`APPROVALS${approvalEntries.length > 0 ? ` (${approvalEntries.length})` : ''}`} active={tab === 'approvals'} onClick={() => setTab('approvals')} />
+        <TabButton label="EMAIL" active={tab === 'email'} onClick={() => setTab('email')} />
+        <TabButton label="TEAM" active={tab === 'team'} onClick={() => setTab('team')} />
       </div>
 
       {/* Content */}
@@ -191,6 +273,18 @@ export function OpsDrawer({ open, onClose }: { open: boolean; onClose: () => voi
 
         {!loading && tab === 'routines' && (
           <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+            <div style={{ background: '#0f172a', border: '1px dashed #334155', borderRadius: 8, padding: 12, display: 'flex', flexDirection: 'column', gap: 6 }}>
+              <span style={{ fontFamily: 'Orbitron, sans-serif', color: '#64748b', fontSize: 10, letterSpacing: '0.1em' }}>NEW ROUTINE</span>
+              <input style={routineInputStyle} placeholder="id (e.g. daily_report)" value={newRoutine.id} onChange={e => setNewRoutine({ ...newRoutine, id: e.target.value })} />
+              <input style={routineInputStyle} placeholder="Name" value={newRoutine.name} onChange={e => setNewRoutine({ ...newRoutine, name: e.target.value })} />
+              <input style={routineInputStyle} placeholder="Cron schedule (e.g. 0 9 * * *)" value={newRoutine.schedule} onChange={e => setNewRoutine({ ...newRoutine, schedule: e.target.value })} />
+              <input style={routineInputStyle} placeholder="Agent (e.g. ceo)" value={newRoutine.agent} onChange={e => setNewRoutine({ ...newRoutine, agent: e.target.value })} />
+              <input style={routineInputStyle} placeholder="Prompt" value={newRoutine.prompt} onChange={e => setNewRoutine({ ...newRoutine, prompt: e.target.value })} />
+              <button onClick={createRoutine} style={{
+                background: `${ACCENT}18`, border: `1px solid ${ACCENT}44`, color: ACCENT,
+                borderRadius: 5, padding: '4px 0', fontSize: 11, cursor: 'pointer', fontFamily: 'Orbitron, sans-serif',
+              }}>+ CREATE</button>
+            </div>
             {routines.length === 0 && (
               <div style={{ color: '#334155', fontSize: 12, fontStyle: 'italic', padding: '24px 0' }}>
                 No routines configured
@@ -244,12 +338,35 @@ export function OpsDrawer({ open, onClose }: { open: boolean; onClose: () => voi
                   >
                     {runningId === r.id ? 'RUNNING…' : 'RUN'}
                   </button>
+                  <button onClick={() => showLogs(r.id)} style={{
+                    background: 'none', border: '1px solid #334155', color: '#94a3b8',
+                    borderRadius: 5, padding: '3px 8px', fontSize: 10, cursor: 'pointer',
+                    fontFamily: 'Orbitron, sans-serif',
+                  }}>LOGS</button>
+                  <button onClick={() => toggleRoutine(r)} style={{
+                    background: 'none',
+                    border: `1px solid ${r.enabled ? '#22c55e44' : '#334155'}`,
+                    color: r.enabled ? '#22c55e' : '#64748b',
+                    borderRadius: 5, padding: '3px 8px', fontSize: 10, cursor: 'pointer',
+                    fontFamily: 'Orbitron, sans-serif',
+                  }}>{r.enabled ? 'ON' : 'OFF'}</button>
+                  <button onClick={() => deleteRoutine(r.id)} style={{
+                    background: 'none', border: '1px solid #ef444444', color: '#ef4444',
+                    borderRadius: 5, padding: '3px 8px', fontSize: 10, cursor: 'pointer',
+                  }}>✕</button>
                 </div>
                 {r.last_run && (
                   <div style={{ color: '#334155', fontSize: 10, marginTop: 4, fontFamily: 'JetBrains Mono, monospace' }}>
                     Last: {r.last_run.slice(0, 16).replace('T', ' ')}
                   </div>
                 )}
+                {logsFor === r.id && logs.map((l, i) => (
+                  <div key={i} style={{ background: '#020408', border: '1px solid #1e293b', borderRadius: 4, padding: 6, fontSize: 10, color: '#94a3b8', fontFamily: 'JetBrains Mono, monospace', marginTop: 4 }}>
+                    <span style={{ color: l.status === 'success' ? '#22c55e' : '#ef4444' }}>{l.status}</span>
+                    {' · '}{l.timestamp.slice(0, 16).replace('T', ' ')}
+                    <div style={{ whiteSpace: 'pre-wrap', maxHeight: 80, overflowY: 'auto' }}>{l.output.slice(0, 300)}</div>
+                  </div>
+                ))}
               </div>
             ))}
           </div>
@@ -282,8 +399,59 @@ export function OpsDrawer({ open, onClose }: { open: boolean; onClose: () => voi
                 {s.description && (
                   <div style={{ color: '#64748b', fontSize: 11 }}>{s.description}</div>
                 )}
+                <div style={{ display: 'flex', gap: 6, marginTop: 6 }}>
+                  <button onClick={async () => { await fetch(`/api/skills/${s.id}/rollback`, { method: 'POST' }).catch(() => null); fetchAll() }}
+                    style={{ background: 'none', border: '1px solid #334155', color: '#94a3b8', borderRadius: 5, padding: '2px 8px', fontSize: 10, cursor: 'pointer' }}>
+                    ROLLBACK
+                  </button>
+                  <button onClick={async () => { await fetch(`/api/skills/${s.id}`, { method: 'DELETE' }).catch(() => null); fetchAll() }}
+                    style={{ background: 'none', border: '1px solid #ef444444', color: '#ef4444', borderRadius: 5, padding: '2px 8px', fontSize: 10, cursor: 'pointer' }}>
+                    DELETE
+                  </button>
+                </div>
               </div>
             ))}
+          </div>
+        )}
+
+        {!loading && tab === 'email' && (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+            <button onClick={async () => { await fetch('/api/email-tasks/poll', { method: 'POST' }).catch(() => null); setTimeout(fetchAll, 2000) }}
+              style={{ background: `${ACCENT}18`, border: `1px solid ${ACCENT}44`, color: ACCENT, borderRadius: 5, padding: '4px 10px', fontSize: 10, cursor: 'pointer', fontFamily: 'Orbitron, sans-serif', alignSelf: 'flex-start' }}>
+              POLL INBOX NOW
+            </button>
+            {emailTasks.length === 0 && (
+              <div style={{ color: '#334155', fontSize: 12, fontStyle: 'italic', padding: '24px 0' }}>No email tasks yet</div>
+            )}
+            {emailTasks.map(t => (
+              <div key={t.id} style={{ background: '#0f172a', border: '1px solid #1e293b', borderRadius: 8, padding: '10px 14px' }}>
+                <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+                  <span style={{ flex: 1, color: '#e2e8f0', fontSize: 12, fontFamily: 'JetBrains Mono, monospace' }}>{t.subject}</span>
+                  <StatusBadge status={t.status === 'done' ? 'ok' : t.status === 'error' ? 'error' : t.status} />
+                </div>
+                <div style={{ color: '#475569', fontSize: 10, marginTop: 2 }}>{t.from} · {t.updated.slice(0, 16).replace('T', ' ')}</div>
+              </div>
+            ))}
+          </div>
+        )}
+
+        {!loading && tab === 'team' && (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+            {Object.entries(agents).map(([id, a]) => (
+              <div key={id} style={{ background: '#0f172a', border: '1px solid #1e293b', borderRadius: 8, padding: '10px 14px', display: 'flex', alignItems: 'center', gap: 8 }}>
+                <div style={{ flex: 1 }}>
+                  <div style={{ color: '#e2e8f0', fontSize: 12, fontWeight: 600 }}>{a.name}</div>
+                  <div style={{ color: '#64748b', fontSize: 10 }}>{a.title}</div>
+                </div>
+                {!['ceo', 'backend', 'frontend', 'qa', 'devops', 'browser'].includes(id) && (
+                  <button onClick={async () => { await fetch(`/api/hire/${id}`, { method: 'DELETE' }).catch(() => null); fetchAll() }}
+                    style={{ background: 'none', border: '1px solid #ef444444', color: '#ef4444', borderRadius: 5, padding: '2px 8px', fontSize: 10, cursor: 'pointer' }}>
+                    FIRE
+                  </button>
+                )}
+              </div>
+            ))}
+            <HireForm onHired={fetchAll} />
           </div>
         )}
 
