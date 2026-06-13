@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback } from 'react'
 import { useNexusStore, connectWebSocket, sendWsMessage } from '../store'
 import { toggleWakeWord } from './useWakeWord'
+import { toggleSfx } from './useSfx'
 
 export interface PaletteAction {
   id: string
@@ -37,6 +38,7 @@ export function useCommandPalette() {
     { id: 'notif-show',   label: 'Show notifications', group: 'WORK QUEUE' },
     { id: 'tts-toggle',   label: 'Toggle voice / TTS', group: 'VOICE' },
     { id: 'wake-toggle',  label: 'Toggle wake word ("Nexus …")', group: 'VOICE' },
+    { id: 'sfx-toggle',   label: 'Toggle UI sounds', group: 'SYSTEM' },
     { id: 'ws-reconnect', label: 'Reconnect WebSocket', group: 'SYSTEM' },
   ]
 
@@ -60,6 +62,8 @@ export function useCommandPalette() {
       toggleTts?.()
     } else if (id === 'wake-toggle') {
       toggleWakeWord()
+    } else if (id === 'sfx-toggle') {
+      toggleSfx()
     } else if (id === 'ask-subaru') {
       const text = query.trim()
       if (text) sendWsMessage({ type: 'message', agent: 'ceo', text })
