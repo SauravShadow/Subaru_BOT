@@ -1,7 +1,7 @@
 // nexus-ui/src/components/NexusScene.tsx
 import { useState, useCallback } from 'react'
 import { Canvas } from '@react-three/fiber'
-import { CameraControls } from '@react-three/drei'
+import { CameraControls, AdaptiveDpr } from '@react-three/drei'
 import { Background } from './Background'
 import { CeoNode } from './CeoNode'
 import { AgentNode } from './AgentNode'
@@ -94,8 +94,10 @@ export function NexusScene() {
       <Canvas
         camera={{ position: [0, 2, 10], fov: 60 }}
         style={{ background: '#020408' }}
-        gl={{ antialias: true, alpha: false }}
+        dpr={[1, 1.5]}
+        gl={{ antialias: true, alpha: false, powerPreference: 'high-performance' }}
       >
+        <AdaptiveDpr pixelated />
         <Background />
 
         {/* CEO arc reactor */}
