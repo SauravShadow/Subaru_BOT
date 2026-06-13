@@ -5,6 +5,7 @@ import { CameraControls, AdaptiveDpr } from '@react-three/drei'
 import type { CameraControls as CameraControlsImpl } from '@react-three/drei'
 import { CameraDirector } from './CameraDirector'
 import { ReactorRing } from './ReactorRing'
+import { EdgeTaskLabel } from './EdgeTaskLabel'
 import { Background } from './Background'
 import { CeoNode } from './CeoNode'
 import { AgentNode } from './AgentNode'
@@ -134,6 +135,7 @@ export function NexusScene() {
                   isActive={edge?.isActive ?? false}
                   workerId={id}
                 />
+                <EdgeTaskLabel workerId={id} start={ceoPos} end={pos} />
                 <AgentNode
                   agent={agent}
                   position={pos}
