@@ -1,5 +1,5 @@
 // nexus-ui/src/components/PostProcessing.tsx
-import { EffectComposer, Bloom, ChromaticAberration, Vignette } from '@react-three/postprocessing'
+import { EffectComposer, Bloom, ChromaticAberration, Vignette, Noise, Scanline } from '@react-three/postprocessing'
 import { BlendFunction } from 'postprocessing'
 import * as THREE from 'three'
 
@@ -19,6 +19,8 @@ export function PostProcessing() {
         modulationOffset={0}
       />
       <Vignette darkness={0.4} />
+      <Scanline blendFunction={BlendFunction.OVERLAY} density={1.1} opacity={0.045} />
+      <Noise premultiply opacity={0.05} />
     </EffectComposer>
   )
 }

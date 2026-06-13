@@ -24,6 +24,7 @@ import { SystemVitals } from './SystemVitals'
 import { ErrorFlash } from './ErrorFlash'
 import { BootOverlay } from './BootOverlay'
 import { CommandBar } from './CommandBar'
+import { HudFrame } from './HudFrame'
 import { useNexusStore } from '../store'
 import { AGENT_POSITIONS, workerPosition } from '../types'
 import { useCommandPalette } from '../hooks/useCommandPalette'
@@ -78,6 +79,7 @@ export function NexusScene() {
       <SystemVitals />
       <ErrorFlash />
       <CommandBar />
+      <HudFrame />
 
       {/* OPS button — top-left, below ModelPill */}
       <button
