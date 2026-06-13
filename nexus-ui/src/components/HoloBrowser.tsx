@@ -1,6 +1,6 @@
 // nexus-ui/src/components/HoloBrowser.tsx
 import { useEffect, useMemo, useRef, useState } from 'react'
-import { Billboard, Html } from '@react-three/drei'
+import { Billboard, Text } from '@react-three/drei'
 import * as THREE from 'three'
 import { useNexusStore } from '../store'
 
@@ -58,16 +58,10 @@ export function HoloBrowser({ position }: Props) {
         <planeGeometry args={[2.4, 1.5]} />
         <meshBasicMaterial map={texture} transparent opacity={0.92} toneMapped={false} />
       </mesh>
-      <Html position={[0, -0.95, 0]} center distanceFactor={8} zIndexRange={[20, 0]}
-            style={{ pointerEvents: 'none', userSelect: 'none' }}>
-        <div style={{
-          maxWidth: 280, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis',
-          fontFamily: 'JetBrains Mono, monospace', fontSize: 10, color: VIOLET,
-          textShadow: `0 0 6px ${VIOLET}99`,
-        }}>
-          {(view.caption ? `${view.caption} · ` : '') + view.url.slice(0, 70)}
-        </div>
-      </Html>
+      <Text position={[0, -0.92, 0]} fontSize={0.08} color={VIOLET} anchorX="center"
+            maxWidth={2.4} outlineWidth={0.004} outlineColor="#020408">
+        {(view.caption ? `${view.caption} · ` : '') + view.url.slice(0, 70)}
+      </Text>
     </Billboard>
   )
 }

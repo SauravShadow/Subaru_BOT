@@ -1,5 +1,5 @@
 // nexus-ui/src/components/EdgeTaskLabel.tsx
-import { Html } from '@react-three/drei'
+import { Billboard, Text } from '@react-three/drei'
 import { useNexusStore } from '../store'
 import { agentColor } from '../types'
 
@@ -22,17 +22,11 @@ export function EdgeTaskLabel({ workerId, start, end }: Props) {
   const color = agentColor(workerId)
 
   return (
-    <Html position={mid} center distanceFactor={9} zIndexRange={[20, 0]}
-          style={{ pointerEvents: 'none', userSelect: 'none' }}>
-      <div style={{
-        maxWidth: 240, textAlign: 'center',
-        fontFamily: 'JetBrains Mono, monospace', fontSize: 10, color,
-        background: 'rgba(2, 4, 8, 0.55)', border: `1px solid ${color}33`,
-        borderRadius: 6, padding: '3px 8px',
-        textShadow: '0 0 6px currentColor',
-      }}>
+    <Billboard position={mid}>
+      <Text fontSize={0.085} color={color} anchorX="center" maxWidth={2.4}
+            textAlign="center" outlineWidth={0.004} outlineColor="#020408">
         {item.task.length > 60 ? item.task.slice(0, 60) + '…' : item.task}
-      </div>
-    </Html>
+      </Text>
+    </Billboard>
   )
 }

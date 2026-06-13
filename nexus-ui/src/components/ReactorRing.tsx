@@ -1,7 +1,7 @@
 // nexus-ui/src/components/ReactorRing.tsx
 import { useMemo, useRef } from 'react'
 import { useFrame } from '@react-three/fiber'
-import { Html } from '@react-three/drei'
+import { Billboard, Text } from '@react-three/drei'
 import * as THREE from 'three'
 import { useNexusStore } from '../store'
 
@@ -48,16 +48,12 @@ export function ReactorRing() {
                                 transparent opacity={0.85} />
         </instancedMesh>
       </group>
-      <Html position={[0, 1.55, 0]} center distanceFactor={8} zIndexRange={[20, 0]}
-            style={{ pointerEvents: 'none', userSelect: 'none' }}>
-        <div style={{
-          fontFamily: 'JetBrains Mono, monospace', fontSize: 11, color: '#00f0ff',
-          letterSpacing: '0.3em', whiteSpace: 'nowrap',
-          textShadow: '0 0 8px rgba(0,240,255,0.7)',
-        }}>
-          {clock} · {busyCount} ACTIVE
-        </div>
-      </Html>
+      <Billboard position={[0, 1.55, 0]}>
+        <Text fontSize={0.12} color="#00f0ff" anchorX="center" anchorY="middle"
+              letterSpacing={0.2} outlineWidth={0.005} outlineColor="#020408">
+          {`${clock} · ${busyCount} ACTIVE`}
+        </Text>
+      </Billboard>
     </group>
   )
 }
