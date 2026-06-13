@@ -1,7 +1,7 @@
 // nexus-ui/src/components/NexusScene.tsx
 import { useState, useCallback, useRef, useEffect } from 'react'
 import { Canvas } from '@react-three/fiber'
-import { CameraControls, AdaptiveDpr } from '@react-three/drei'
+import { CameraControls } from '@react-three/drei'
 import type { CameraControls as CameraControlsImpl } from '@react-three/drei'
 import { CameraDirector } from './CameraDirector'
 import { ReactorRing } from './ReactorRing'
@@ -120,7 +120,6 @@ export function NexusScene() {
         dpr={[1, 1.5]}
         gl={{ antialias: true, alpha: false, powerPreference: 'high-performance' }}
       >
-        <AdaptiveDpr pixelated />
         <Background />
 
         {/* CEO arc reactor */}
