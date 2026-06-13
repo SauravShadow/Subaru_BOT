@@ -1,7 +1,9 @@
 // nexus-ui/src/components/NexusScene.tsx
-import { useState, useCallback } from 'react'
+import { useState, useCallback, useRef } from 'react'
 import { Canvas } from '@react-three/fiber'
 import { CameraControls, AdaptiveDpr } from '@react-three/drei'
+import type { CameraControls as CameraControlsImpl } from '@react-three/drei'
+import { CameraDirector } from './CameraDirector'
 import { Background } from './Background'
 import { CeoNode } from './CeoNode'
 import { AgentNode } from './AgentNode'
@@ -49,6 +51,12 @@ export function NexusScene() {
   }, [])
 
   const ceoPos = AGENT_POSITIONS['ceo']!
+
+  const controlsRef = useRef<CameraControlsImpl>(null)
+  const workerIds = Object.keys(agents).filter(id => id !== 'ceo')
+  const positionFor = useCallback((id: string): [number, number, number] =>
+    AGENT_POSITIONS[id] ?? workerPosition(workerIds.indexOf(id), workerIds.length),
+  [workerIds.join(',')])
 
   return (
     <div style={{ width: '100vw', height: '100vh', position: 'relative' }}>
@@ -110,10 +118,9 @@ export function NexusScene() {
 
         {/* Worker nodes + edges — dynamic roster (hired agents included) */}
         {(() => {
-          const workerIds = Object.keys(agents).filter(id => id !== 'ceo')
-          return workerIds.map((id, i) => {
+          return workerIds.map((id) => {
             const agent = agents[id]
-            const pos = AGENT_POSITIONS[id] ?? workerPosition(i, workerIds.length)
+            const pos = positionFor(id)
             const edge = edges.find(e => e.to === id)
             const dimmed = !!selectedAgent && selectedAgent !== id
             return (
@@ -136,7 +143,8 @@ export function NexusScene() {
           })
         })()}
 
-        <CameraControls />
+        <CameraControls ref={controlsRef} makeDefault smoothTime={0.45} />
+        <CameraDirector controlsRef={controlsRef} positionFor={positionFor} />
         <PostProcessing />
       </Canvas>
 
