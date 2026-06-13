@@ -14,6 +14,8 @@ export function SmartIsland() {
   const notifications = useNexusStore(s => s.notifications)
   const workQueue    = useNexusStore(s => s.workQueue)
   const agents       = useNexusStore(s => s.agents)
+  const selectAgent  = useNexusStore(s => s.selectAgent)
+  const openOps      = useNexusStore(s => s.openOps)
 
   const activeWorkers = Object.values(agents).filter(a => a.status === 'working' && a.id !== 'ceo')
   const pendingCount = workQueue.filter(q => q.status === 'pending' || q.status === 'active').length
@@ -100,9 +102,16 @@ export function SmartIsland() {
                   No notifications yet
                 </div>
               ) : notifications.map(n => (
-                <div key={n.id} style={{
+                <div key={n.id}
+                  onClick={() => {
+                    if (n.type === 'approval') openOps('approvals')
+                    else if (n.type === 'email') openOps('email')
+                    else if (n.type === 'routine') openOps('routines')
+                  }}
+                  style={{
                   display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start',
                   padding: '8px 14px', borderBottom: '1px solid #0d1117', fontSize: 12,
+                  cursor: ['approval', 'email', 'routine'].includes(n.type) ? 'pointer' : 'default',
                 }}>
                   <span style={{ color: '#e2e8f0', flex: 1 }}>
                     {n.type === 'done' && '✓ '}
@@ -123,9 +132,12 @@ export function SmartIsland() {
                   No tasks in queue
                 </div>
               ) : workQueue.map((item, i) => (
-                <div key={item.id} style={{
+                <div key={item.id}
+                  onClick={() => { if (item.agent) { selectAgent(item.agent); setExpanded(false) } }}
+                  style={{
                   display: 'flex', gap: 8, alignItems: 'center',
                   padding: '8px 14px', borderBottom: '1px solid #0d1117', fontSize: 12,
+                  cursor: item.agent ? 'pointer' : 'default',
                 }}>
                   <span style={{ color: '#475569', minWidth: 20 }}>[{i + 1}]</span>
                   <span style={{ color: '#e2e8f0', flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>

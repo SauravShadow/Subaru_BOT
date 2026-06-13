@@ -38,8 +38,10 @@ interface NexusStore {
   designPreviewVisible: boolean
   pendingApprovals: number
   lastErrorTs: number | null
+  opsRequest: { tab: 'routines' | 'skills' | 'approvals' | 'email' | 'team'; ts: number } | null
 
   selectAgent: (id: string | null) => void
+  openOps: (tab: 'routines' | 'skills' | 'approvals' | 'email' | 'team') => void
   setWsStatus: (s: 'connected' | 'offline') => void
   resetAgentStatus: (id: string) => void
   setIslandExpanded: (v: boolean) => void
@@ -68,8 +70,10 @@ export const useNexusStore = create<NexusStore>((set) => ({
   designPreviewVisible: false,
   pendingApprovals: 0,
   lastErrorTs: null,
+  opsRequest: null,
 
   selectAgent: (id) => set({ selectedAgent: id }),
+  openOps: (tab) => set({ opsRequest: { tab, ts: Date.now() } }),
   setWsStatus: (s) => set({ wsStatus: s }),
   resetAgentStatus: (id) => set(state => ({
     agents: { ...state.agents, [id]: { ...state.agents[id], status: 'idle' } }

@@ -108,8 +108,16 @@ function HireForm({ onHired }: { onHired: () => void }) {
   )
 }
 
-export function OpsDrawer({ open, onClose }: { open: boolean; onClose: () => void }) {
+export function OpsDrawer({ open, onClose, requestedTab }: {
+  open: boolean
+  onClose: () => void
+  requestedTab?: { tab: OpsTab; ts: number } | null
+}) {
   const [tab, setTab] = useState<OpsTab>('routines')
+
+  useEffect(() => {
+    if (requestedTab) setTab(requestedTab.tab)
+  }, [requestedTab])
   const [routines, setRoutines] = useState<Routine[]>([])
   const [skills, setSkills] = useState<{ tools: SkillEntry[]; learned: SkillEntry[] }>({ tools: [], learned: [] })
   const [approvals, setApprovals] = useState<Record<string, Approval>>({})

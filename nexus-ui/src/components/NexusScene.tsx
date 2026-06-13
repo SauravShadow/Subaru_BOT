@@ -1,5 +1,5 @@
 // nexus-ui/src/components/NexusScene.tsx
-import { useState, useCallback, useRef } from 'react'
+import { useState, useCallback, useRef, useEffect } from 'react'
 import { Canvas } from '@react-three/fiber'
 import { CameraControls, AdaptiveDpr } from '@react-three/drei'
 import type { CameraControls as CameraControlsImpl } from '@react-three/drei'
@@ -40,9 +40,12 @@ export function NexusScene() {
   const edges         = useNexusStore(s => s.edges)
   const selectedAgent = useNexusStore(s => s.selectedAgent)
   const pendingApprovals = useNexusStore(s => s.pendingApprovals)
+  const opsRequest = useNexusStore(s => s.opsRequest)
 
   const [hover, setHover] = useState<HoverState | null>(null)
   const [opsOpen, setOpsOpen] = useState(false)
+
+  useEffect(() => { if (opsRequest) setOpsOpen(true) }, [opsRequest])
   const { isSpeaking } = useVoice(null, () => {})
 
   const palette = useCommandPalette()
@@ -103,7 +106,7 @@ export function NexusScene() {
         )}
       </button>
 
-      <OpsDrawer open={opsOpen} onClose={() => setOpsOpen(false)} />
+      <OpsDrawer open={opsOpen} onClose={() => setOpsOpen(false)} requestedTab={opsRequest} />
 
       <Canvas
         camera={{ position: [0, 2, 10], fov: 60 }}
