@@ -37,6 +37,7 @@ interface NexusStore {
   designPreviewTs: number | null
   designPreviewVisible: boolean
   pendingApprovals: number
+  lastErrorTs: number | null
 
   selectAgent: (id: string | null) => void
   setWsStatus: (s: 'connected' | 'offline') => void
@@ -66,6 +67,7 @@ export const useNexusStore = create<NexusStore>((set) => ({
   designPreviewTs: null,
   designPreviewVisible: false,
   pendingApprovals: 0,
+  lastErrorTs: null,
 
   selectAgent: (id) => set({ selectedAgent: id }),
   setWsStatus: (s) => set({ wsStatus: s }),
@@ -280,7 +282,8 @@ export const useNexusStore = create<NexusStore>((set) => ({
 
         case 'error':
           if (agentId) updateAgent(agentId, { status: 'idle' })
-          break
+          addNotif(`⚠ ${agents[agentId ?? '']?.name ?? agentId ?? 'system'}: ${String(event.message ?? 'error').slice(0, 60)}`, 'system')
+          return { agents, edges, notifications, lastErrorTs: Date.now() }
       }
 
       return { agents, edges, notifications }

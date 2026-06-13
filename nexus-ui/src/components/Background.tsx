@@ -1,6 +1,7 @@
 // nexus-ui/src/components/Background.tsx
 import { useRef, useMemo } from 'react'
 import { useFrame } from '@react-three/fiber'
+import { Environment, Lightformer } from '@react-three/drei'
 import * as THREE from 'three'
 import { useNexusStore } from '../store'
 
@@ -36,7 +37,7 @@ const floorFragmentShader = `
 
   void main() {
     float radialFade = 1.0 - smoothstep(12.0, 20.0, vDist);
-    float brightness = 0.15 + max(0.0, vWave * 5.0) * 0.4;
+    float brightness = 0.09 + max(0.0, vWave * 5.0) * 0.4;
     // #0ea5e9 = rgb(0.055, 0.647, 0.914)
     vec3 color = vec3(0.055, 0.647, 0.914);
     gl_FragColor = vec4(color, brightness * radialFade * 0.75);
@@ -131,7 +132,14 @@ export function Background() {
 
   return (
     <>
-      <fog attach="fog" args={['#020408', 6, 35]} />
+      <fog attach="fog" args={['#020408', 7, 30]} />
+      <Environment resolution={64}>
+        <Lightformer intensity={2} position={[0, 4, -9]} scale={[10, 1, 1]} color="#00f0ff" />
+        <Lightformer intensity={1.2} position={[-5, 1, -1]} scale={[2, 0.5, 1]}
+                     rotation-y={Math.PI / 2} color="#1e3a5f" />
+        <Lightformer intensity={1.5} position={[5, -1, -1]} scale={[2, 0.5, 1]}
+                     rotation-y={-Math.PI / 2} color="#f59e0b" />
+      </Environment>
       <ambientLight intensity={0.15} />
       {/* CEO key light */}
       <pointLight position={[0, 0.5, 4]} color="#f59e0b" intensity={ceoLightIntensity} distance={12} />
