@@ -4,6 +4,7 @@ import { Canvas } from '@react-three/fiber'
 import { CameraControls, AdaptiveDpr } from '@react-three/drei'
 import type { CameraControls as CameraControlsImpl } from '@react-three/drei'
 import { CameraDirector } from './CameraDirector'
+import { ReactorRing } from './ReactorRing'
 import { Background } from './Background'
 import { CeoNode } from './CeoNode'
 import { AgentNode } from './AgentNode'
@@ -116,6 +117,7 @@ export function NexusScene() {
             onClick={() => {}}
           />
         )}
+        <ReactorRing />
 
         {/* Worker nodes + edges — dynamic roster (hired agents included) */}
         {(() => {
