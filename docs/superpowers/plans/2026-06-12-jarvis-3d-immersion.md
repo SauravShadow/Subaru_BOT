@@ -1,6 +1,6 @@
 # Jarvis 3D Immersion & Visual Overhaul Implementation Plan (v2)
 
-> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
+> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [x]`) syntax for tracking.
 
 **Goal:** Transform the NEXUS dashboard into a Jarvis-style command center — premium materials (glass nodes, energy-tube edges, reworked reactor core), crisp CSS typography, cinematic camera + boot sequence, in-scene holograms, and a global "Ask Subaru anything…" command bar as the master control console.
 
@@ -23,7 +23,7 @@
 **Files:**
 - Modify: `nexus-ui/src/components/NexusScene.tsx` (Canvas props)
 
-- [ ] **Step 1: Cap device pixel ratio and enable adaptive degradation**
+- [x] **Step 1: Cap device pixel ratio and enable adaptive degradation**
 
 ```tsx
 import { CameraControls, AdaptiveDpr } from '@react-three/drei'
@@ -39,11 +39,11 @@ import { CameraControls, AdaptiveDpr } from '@react-three/drei'
         <AdaptiveDpr pixelated />
 ```
 
-- [ ] **Step 2: Typecheck**
+- [x] **Step 2: Typecheck**
 
 Run: `cd nexus-ui && npx tsc --noEmit` — expected: clean.
 
-- [ ] **Step 3: Commit**
+- [x] **Step 3: Commit**
 
 ```bash
 git add nexus-ui/src/components/NexusScene.tsx
@@ -60,7 +60,7 @@ git commit -m "perf(ui): dpr cap + AdaptiveDpr guard rails"
 
 Today `WORKER_IDS`/`AGENT_POSITIONS` hardcode 5 workers; hired agents can never render. This task also introduces `agentColor()`, which every later task uses.
 
-- [ ] **Step 1: Add layout + color helpers in `types.ts`**
+- [x] **Step 1: Add layout + color helpers in `types.ts`**
 
 Keep the existing `AGENT_POSITIONS` and `AGENT_COLORS` exports (other code references them), and add:
 
@@ -87,7 +87,7 @@ export function agentColor(id: string): string {
 }
 ```
 
-- [ ] **Step 2: Make edges dynamic on `init`**
+- [x] **Step 2: Make edges dynamic on `init`**
 
 In `store.ts` `case 'init'`, after hydrating agents, rebuild edges from the live roster instead of only resetting `isActive`:
 
@@ -105,7 +105,7 @@ In `store.ts` `case 'init'`, after hydrating agents, rebuild edges from the live
         }
 ```
 
-- [ ] **Step 3: Render the roster dynamically in `NexusScene.tsx`**
+- [x] **Step 3: Render the roster dynamically in `NexusScene.tsx`**
 
 Replace the hardcoded `WORKER_IDS.map(...)` block:
 
@@ -130,7 +130,7 @@ Replace the hardcoded `WORKER_IDS.map(...)` block:
 
 Import `workerPosition` from `../types`. Known agents keep their spec positions (`AGENT_POSITIONS[id] ??` fallback), so the existing scene is unchanged until a 6th agent is hired.
 
-- [ ] **Step 4: Switch color lookups to `agentColor()` in HoverCard + AgentDetailView**
+- [x] **Step 4: Switch color lookups to `agentColor()` in HoverCard + AgentDetailView**
 
 In `HoverCard.tsx` and `AgentDetailView.tsx`, replace `AGENT_COLORS[id] ?? <fallback>` reads with `agentColor(id)` (import from `../types`). `AgentNode.tsx` and `NeuralEdge.tsx` are fully rewritten in Tasks 3 and 5 and adopt it there. Find them all:
 
@@ -138,7 +138,7 @@ In `HoverCard.tsx` and `AgentDetailView.tsx`, replace `AGENT_COLORS[id] ?? <fall
 grep -rn "AGENT_COLORS" nexus-ui/src/components nexus-ui/src/hooks
 ```
 
-- [ ] **Step 5: Typecheck + commit**
+- [x] **Step 5: Typecheck + commit**
 
 ```bash
 cd nexus-ui && npx tsc --noEmit && cd ..
@@ -156,7 +156,7 @@ git commit -m "feat(ui): dynamic orbital roster — hired agents render in the 3
 
 Fixes feedback items 1, 2 and 4 for workers: the faceted `icosahedronGeometry(r, 1)` opaque ball becomes a smooth tinted-glass sphere (`MeshPhysicalMaterial`, env reflections from Task 7) with a razor-thin additive fresnel rim, a glowing inner core, and labels rendered as crisp CSS via drei `<Html>` instead of in-scene 3D text. Emissive intensities are raised past the bloom threshold so active nodes actually glow.
 
-- [ ] **Step 1: Create the shared CSS label component**
+- [x] **Step 1: Create the shared CSS label component**
 
 ```tsx
 // nexus-ui/src/components/NodeLabel.tsx
@@ -198,7 +198,7 @@ export function NodeLabel({ position, name, role, color, dimmed }: Props) {
 
 `zIndexRange={[20, 0]}` keeps labels under the DOM HUD (which starts at zIndex 30+).
 
-- [ ] **Step 2: Rewrite `AgentNode.tsx`**
+- [x] **Step 2: Rewrite `AgentNode.tsx`**
 
 Full replacement (keeps the existing shatter spring, corona particles, ProgressRing, hover/click contract):
 
@@ -445,7 +445,7 @@ export function AgentNode({ agent, position, dimmed, onHoverEnter, onHoverLeave 
 
 Note: the old icosahedron survives only as the *inner wireframe core*, where faceting reads as intentional tech detail instead of cheap geometry.
 
-- [ ] **Step 3: Typecheck + commit**
+- [x] **Step 3: Typecheck + commit**
 
 ```bash
 cd nexus-ui && npx tsc --noEmit && cd ..
@@ -462,7 +462,7 @@ git commit -m "feat(ui): glass worker nodes — fresnel rim, inner core, CSS lab
 
 Fixes feedback item: "solid yellow ball with flat rings" → a small white-hot core inside two counter-rotating wireframe shells, a 40-particle volumetric glow fog, the existing three tori, and CSS labels.
 
-- [ ] **Step 1: Rewrite `CeoNode.tsx`**
+- [x] **Step 1: Rewrite `CeoNode.tsx`**
 
 ```tsx
 // nexus-ui/src/components/CeoNode.tsx
@@ -642,7 +642,7 @@ export function CeoNode({ isSpeaking, onClick }: CeoNodeProps) {
 }
 ```
 
-- [ ] **Step 2: Typecheck + commit**
+- [x] **Step 2: Typecheck + commit**
 
 ```bash
 cd nexus-ui && npx tsc --noEmit && cd ..
@@ -659,7 +659,7 @@ git commit -m "feat(ui): reactor core rework — wireframe shells, core fog, whi
 
 Fixes feedback item 3: `QuadraticBezierLine` (0.5–1.5 *pixel* width) becomes a real `TubeGeometry` conduit — dark and semi-transparent at rest; when active, an elongated glowing capsule races down the tube with a fading trail. Keeps the existing ReverseBurst on completion.
 
-- [ ] **Step 1: Rewrite `NeuralEdge.tsx`**
+- [x] **Step 1: Rewrite `NeuralEdge.tsx`**
 
 ```tsx
 // nexus-ui/src/components/NeuralEdge.tsx
@@ -807,7 +807,7 @@ export function NeuralEdge({ start, end, isActive, workerId }: NeuralEdgeProps) 
 }
 ```
 
-- [ ] **Step 2: Typecheck + commit**
+- [x] **Step 2: Typecheck + commit**
 
 ```bash
 cd nexus-ui && npx tsc --noEmit && cd ..
@@ -826,7 +826,7 @@ git commit -m "feat(ui): neural energy tubes — TubeGeometry conduits with caps
 
 Fixes feedback item "lack of contrast & scale": darker floor, tighter fog, env-map reflections that make the Task 3 glass actually reflect something, bloom that picks up the new emissive ranges, and a red mood flash on errors.
 
-- [ ] **Step 1: Add a procedural environment + darker floor in `Background.tsx`**
+- [x] **Step 1: Add a procedural environment + darker floor in `Background.tsx`**
 
 Add imports:
 
@@ -858,7 +858,7 @@ In `floorFragmentShader`, replace the brightness line to darken the floor so neo
     float brightness = 0.09 + max(0.0, vWave * 5.0) * 0.4;
 ```
 
-- [ ] **Step 2: Retune Bloom in `PostProcessing.tsx`**
+- [x] **Step 2: Retune Bloom in `PostProcessing.tsx`**
 
 Replace the `<Bloom ...>` props:
 
@@ -873,7 +873,7 @@ Replace the `<Bloom ...>` props:
 
 (Keep ChromaticAberration and Vignette unchanged.)
 
-- [ ] **Step 3: Track errors in the store**
+- [x] **Step 3: Track errors in the store**
 
 In `store.ts`, add to the `NexusStore` interface:
 
@@ -890,7 +890,7 @@ Initial value in the `create` call: `lastErrorTs: null,`. Then extend the `case 
           return { agents, edges, notifications, lastErrorTs: Date.now() }
 ```
 
-- [ ] **Step 4: Create the error mood flash (DOM — zero GPU cost)**
+- [x] **Step 4: Create the error mood flash (DOM — zero GPU cost)**
 
 ```tsx
 // nexus-ui/src/components/ErrorFlash.tsx
@@ -922,9 +922,9 @@ export function ErrorFlash() {
 }
 ```
 
-- [ ] **Step 5: Mount `<ErrorFlash />`** in `NexusScene.tsx`'s HUD layer (next to `<SystemVitals />`).
+- [x] **Step 5: Mount `<ErrorFlash />`** in `NexusScene.tsx`'s HUD layer (next to `<SystemVitals />`).
 
-- [ ] **Step 6: Typecheck + commit**
+- [x] **Step 6: Typecheck + commit**
 
 ```bash
 cd nexus-ui && npx tsc --noEmit && cd ..
@@ -942,7 +942,7 @@ git commit -m "feat(ui): atmosphere retune — procedural env reflections, darke
 
 The single biggest "feels basic" motion fix: the camera must move with intent.
 
-- [ ] **Step 1: Create the component**
+- [x] **Step 1: Create the component**
 
 ```tsx
 // nexus-ui/src/components/CameraDirector.tsx
@@ -1002,7 +1002,7 @@ export function CameraDirector({ controlsRef, positionFor }: Props) {
 }
 ```
 
-- [ ] **Step 2: Wire into `NexusScene.tsx`**
+- [x] **Step 2: Wire into `NexusScene.tsx`**
 
 ```tsx
 import { useRef } from 'react'
@@ -1028,7 +1028,7 @@ Inside the Canvas replace `<CameraControls />` with:
 
 (Reuse `positionFor` in the Task 2 roster loop to avoid duplicated layout math.)
 
-- [ ] **Step 3: Typecheck + commit**
+- [x] **Step 3: Typecheck + commit**
 
 ```bash
 cd nexus-ui && npx tsc --noEmit && cd ..
@@ -1044,7 +1044,7 @@ git commit -m "feat(ui): cinematic camera — fly-to on select, idle auto-orbit"
 - Create: `nexus-ui/src/components/BootOverlay.tsx`
 - Modify: `nexus-ui/src/components/NexusScene.tsx`
 
-- [ ] **Step 1: Create the component**
+- [x] **Step 1: Create the component**
 
 ```tsx
 // nexus-ui/src/components/BootOverlay.tsx
@@ -1122,9 +1122,9 @@ export function BootOverlay() {
 }
 ```
 
-- [ ] **Step 2: Mount as the last child in `NexusScene.tsx`'s root div:** `<BootOverlay />`.
+- [x] **Step 2: Mount as the last child in `NexusScene.tsx`'s root div:** `<BootOverlay />`.
 
-- [ ] **Step 3: Typecheck + commit**
+- [x] **Step 3: Typecheck + commit**
 
 ```bash
 cd nexus-ui && npx tsc --noEmit && cd ..
@@ -1142,7 +1142,7 @@ git commit -m "feat(ui): boot sequence + uplink-lost banner"
 
 A rotating instanced ring of 48 bars around the CEO whose heights respond to live agent activity. One instanced mesh = one draw call. The clock readout uses `<Html>` (CSS), not 3D text.
 
-- [ ] **Step 1: Create the component**
+- [x] **Step 1: Create the component**
 
 ```tsx
 // nexus-ui/src/components/ReactorRing.tsx
@@ -1212,9 +1212,9 @@ export function ReactorRing() {
 
 (The clock string re-renders whenever store state changes — minute-accurate is fine; no timer needed.)
 
-- [ ] **Step 2: Mount inside the Canvas in `NexusScene.tsx`**, after `<CeoNode ... />`: `<ReactorRing />`.
+- [x] **Step 2: Mount inside the Canvas in `NexusScene.tsx`**, after `<CeoNode ... />`: `<ReactorRing />`.
 
-- [ ] **Step 3: Typecheck + commit**
+- [x] **Step 3: Typecheck + commit**
 
 ```bash
 cd nexus-ui && npx tsc --noEmit && cd ..
@@ -1230,7 +1230,7 @@ git commit -m "feat(ui): reactor data ring — instanced activity bars + CSS clo
 - Create: `nexus-ui/src/components/EdgeTaskLabel.tsx`
 - Modify: `nexus-ui/src/components/NexusScene.tsx`
 
-- [ ] **Step 1: Create the component**
+- [x] **Step 1: Create the component**
 
 ```tsx
 // nexus-ui/src/components/EdgeTaskLabel.tsx
@@ -1273,13 +1273,13 @@ export function EdgeTaskLabel({ workerId, start, end }: Props) {
 }
 ```
 
-- [ ] **Step 2: Mount per worker** in `NexusScene.tsx`'s roster loop, inside the `<group key={id}>` next to `<NeuralEdge ...>`:
+- [x] **Step 2: Mount per worker** in `NexusScene.tsx`'s roster loop, inside the `<group key={id}>` next to `<NeuralEdge ...>`:
 
 ```tsx
               <EdgeTaskLabel workerId={id} start={ceoPos} end={pos} />
 ```
 
-- [ ] **Step 3: Typecheck + commit**
+- [x] **Step 3: Typecheck + commit**
 
 ```bash
 cd nexus-ui && npx tsc --noEmit && cd ..
@@ -1297,7 +1297,7 @@ git commit -m "feat(ui): floating task labels on active delegation edges"
 
 The signature Jarvis feature: the live CDP screencast (already in `browserView` from Plan A) becomes a glowing screen floating above Maya. The DOM `BrowserViewport` panel remains for close inspection; this is the ambient version. Caption is CSS via `<Html>`.
 
-- [ ] **Step 1: Create the component**
+- [x] **Step 1: Create the component**
 
 ```tsx
 // nexus-ui/src/components/HoloBrowser.tsx
@@ -1375,13 +1375,13 @@ export function HoloBrowser({ position }: Props) {
 }
 ```
 
-- [ ] **Step 2: Mount above Maya** in `NexusScene.tsx`'s roster loop, inside `<group key={id}>`:
+- [x] **Step 2: Mount above Maya** in `NexusScene.tsx`'s roster loop, inside `<group key={id}>`:
 
 ```tsx
               {id === 'browser' && <HoloBrowser position={pos} />}
 ```
 
-- [ ] **Step 3: Typecheck + commit**
+- [x] **Step 3: Typecheck + commit**
 
 ```bash
 cd nexus-ui && npx tsc --noEmit && cd ..
@@ -1399,7 +1399,7 @@ git commit -m "feat(ui): holographic live browser screen above Maya"
 
 The master control console from the original 2D dashboard, reimagined for the 3D scene: a glowing input bar fixed at bottom-center. Type a natural-language prompt, hit Enter, and watch Subaru fire a neural pulse to the right worker (the delegation flow from Plan A does the rest). A target chip on the left (default `CEO`) lets you message any agent 1:1 — this rides the `agent` field routing fixed in Plan A Task 4. `/` focuses the bar; the bar pulses in the target's color while the CEO is thinking/working.
 
-- [ ] **Step 1: Create the component**
+- [x] **Step 1: Create the component**
 
 ```tsx
 // nexus-ui/src/components/CommandBar.tsx
@@ -1552,13 +1552,13 @@ export function CommandBar() {
 
 `width: min(680px, calc(100vw - 360px))` keeps it clear of the SmartIsland chip (bottom-right) on narrow windows.
 
-- [ ] **Step 2: Move SystemVitals up out of the way**
+- [x] **Step 2: Move SystemVitals up out of the way**
 
 In `SystemVitals.tsx`, change the container's `bottom: 16` to `bottom: 74` (it now sits directly above the command bar).
 
-- [ ] **Step 3: Mount `<CommandBar />`** in `NexusScene.tsx`'s HUD layer (next to `<SystemVitals />`).
+- [x] **Step 3: Mount `<CommandBar />`** in `NexusScene.tsx`'s HUD layer (next to `<SystemVitals />`).
 
-- [ ] **Step 4: Typecheck + commit**
+- [x] **Step 4: Typecheck + commit**
 
 ```bash
 cd nexus-ui && npx tsc --noEmit && cd ..
@@ -1575,7 +1575,7 @@ git commit -m "feat(ui): global command bar — CEO | Ask Subaru anything"
 
 Every glowing thing becomes a control: clicking a queue row flies to that worker (CameraDirector reacts to `selectAgent`); clicking an approval/email/routine notification opens the right OpsDrawer tab.
 
-- [ ] **Step 1: Add an ops-open request channel to the store**
+- [x] **Step 1: Add an ops-open request channel to the store**
 
 In `store.ts`, add to the `NexusStore` interface:
 
@@ -1591,7 +1591,7 @@ Initial value + action in the `create` call:
   openOps: (tab) => set({ opsRequest: { tab, ts: Date.now() } }),
 ```
 
-- [ ] **Step 2: Let NexusScene + OpsDrawer honor the request**
+- [x] **Step 2: Let NexusScene + OpsDrawer honor the request**
 
 In `NexusScene.tsx` (which owns the local `opsOpen` state):
 
@@ -1622,7 +1622,7 @@ export function OpsDrawer({ open, onClose, requestedTab }: {
   }, [requestedTab])
 ```
 
-- [ ] **Step 3: Make SmartIsland rows clickable**
+- [x] **Step 3: Make SmartIsland rows clickable**
 
 In `SmartIsland.tsx`, pull the actions:
 
@@ -1651,7 +1651,7 @@ Notification rows — add to the row `div`:
 
 and `cursor: ['approval', 'email', 'routine'].includes(n.type) ? 'pointer' : 'default'` in its style.
 
-- [ ] **Step 4: Typecheck + commit**
+- [x] **Step 4: Typecheck + commit**
 
 ```bash
 cd nexus-ui && npx tsc --noEmit && cd ..
@@ -1669,7 +1669,7 @@ git commit -m "feat(ui): actionable HUD — clickable queue rows and notificatio
 
 Two ways to talk without touching the bar: say "Nexus …" / "Subaru …" (continuous listening, **off by default**, Chrome-only — toggled from the ⌘K palette), or type anything unmatched into the ⌘K palette and pick "Ask Subaru".
 
-- [ ] **Step 1: Create the wake-word hook**
+- [x] **Step 1: Create the wake-word hook**
 
 ```typescript
 // nexus-ui/src/hooks/useWakeWord.ts
@@ -1745,7 +1745,7 @@ export function useWakeWord() {
 }
 ```
 
-- [ ] **Step 2: Palette — free-text "Ask Subaru" + wake toggle**
+- [x] **Step 2: Palette — free-text "Ask Subaru" + wake toggle**
 
 In `useCommandPalette.ts`, import `sendWsMessage` alongside the existing store imports, and `toggleWakeWord` from `./useWakeWord`:
 
@@ -1798,9 +1798,9 @@ In `runAction`, handle both new ids **before** the query is cleared (move `setQu
   }, [selectAgent, setIslandTab, query])
 ```
 
-- [ ] **Step 3: Activate the listener** — call `useWakeWord()` at the top of the `NexusScene` component body (import from `../hooks/useWakeWord`).
+- [x] **Step 3: Activate the listener** — call `useWakeWord()` at the top of the `NexusScene` component body (import from `../hooks/useWakeWord`).
 
-- [ ] **Step 4: Typecheck + commit**
+- [x] **Step 4: Typecheck + commit**
 
 ```bash
 cd nexus-ui && npx tsc --noEmit && cd ..
@@ -1817,7 +1817,7 @@ git commit -m "feat(ui): wake word listener + palette free-text ask-subaru"
 - Create: `nexus-ui/src/components/HudFrame.tsx`
 - Modify: `nexus-ui/src/components/NexusScene.tsx`
 
-- [ ] **Step 1: Add Scanline + Noise effects**
+- [x] **Step 1: Add Scanline + Noise effects**
 
 In `PostProcessing.tsx`, extend the composer (both effects ship with `@react-three/postprocessing` — no new deps):
 
@@ -1833,7 +1833,7 @@ Inside the existing `<EffectComposer>`, after `<Vignette ...>`:
       <Noise premultiply opacity={0.05} />
 ```
 
-- [ ] **Step 2: Create the HUD frame**
+- [x] **Step 2: Create the HUD frame**
 
 ```tsx
 // nexus-ui/src/components/HudFrame.tsx
@@ -1866,9 +1866,9 @@ export function HudFrame() {
 }
 ```
 
-- [ ] **Step 3: Mount `<HudFrame />`** in `NexusScene.tsx`'s HUD layer.
+- [x] **Step 3: Mount `<HudFrame />`** in `NexusScene.tsx`'s HUD layer.
 
-- [ ] **Step 4: Typecheck + commit**
+- [x] **Step 4: Typecheck + commit**
 
 ```bash
 cd nexus-ui && npx tsc --noEmit && cd ..
@@ -1884,7 +1884,7 @@ git commit -m "feat(ui): scanline+noise film finish and HUD corner frame"
 - Create: `nexus-ui/src/hooks/useSfx.ts`
 - Modify: `nexus-ui/src/components/NexusScene.tsx`, `nexus-ui/src/hooks/useCommandPalette.ts`
 
-- [ ] **Step 1: Create the hook**
+- [x] **Step 1: Create the hook**
 
 ```typescript
 // nexus-ui/src/hooks/useSfx.ts
@@ -1931,7 +1931,7 @@ export function useSfx() {
 }
 ```
 
-- [ ] **Step 2: Wire it** — call `useSfx()` at the top of `NexusScene`, and add a palette action in `useCommandPalette.ts`'s `actions` array:
+- [x] **Step 2: Wire it** — call `useSfx()` at the top of `NexusScene`, and add a palette action in `useCommandPalette.ts`'s `actions` array:
 
 ```typescript
     { id: 'sfx-toggle', label: 'Toggle UI sounds', group: 'SYSTEM' },
@@ -1946,7 +1946,7 @@ with the handler in `runAction`:
 
 (import `toggleSfx` from `./useSfx`).
 
-- [ ] **Step 3: Typecheck + commit**
+- [x] **Step 3: Typecheck + commit**
 
 ```bash
 cd nexus-ui && npx tsc --noEmit && cd ..
@@ -1960,7 +1960,7 @@ git commit -m "feat(ui): optional WebAudio status blips (off by default)"
 
 **Files:** none
 
-- [ ] **Step 1: Production build**
+- [x] **Step 1: Production build**
 
 ```bash
 cd /mnt/HC_Volume_105874680/virtual-company/nexus-ui && npm run build
@@ -1968,7 +1968,7 @@ cd /mnt/HC_Volume_105874680/virtual-company/nexus-ui && npm run build
 
 Expected: success; bundle delta small (no new deps).
 
-- [ ] **Step 2: Deploy**
+- [x] **Step 2: Deploy**
 
 ```bash
 cd /mnt/HC_Volume_105874680/virtual-company && docker compose up -d --build
@@ -1978,7 +1978,7 @@ curl -s -m 5 http://127.0.0.1:3031/ | grep -o 'index-[A-Za-z0-9]*\.js'
 
 Expected: container Up; served bundle hash changed from `index-BA5fFRqQ.js`.
 
-- [ ] **Step 3: Visual verification checklist (in the browser)**
+- [x] **Step 3: Visual verification checklist (in the browser)**
 
 1. Hard-reload → boot sequence types 4 lines → "ALL SYSTEMS NOMINAL" → fades to scene.
 2. **Materials:** worker nodes are smooth tinted glass with a thin glowing rim and a wireframe core inside; reflections shift as the camera moves; nothing looks like a flat low-poly ball.
@@ -1995,9 +1995,9 @@ Expected: container Up; served bundle hash changed from `index-BA5fFRqQ.js`.
 13. Scanlines/grain on dark areas; corner brackets + "N E X U S" title; error event → brief red edge flash.
 14. `docker restart virtual-company` → "UPLINK LOST" banner blinks, then reconnects.
 
-- [ ] **Step 4: Frame-rate check** — devtools → Performance → record 10s idle and 10s with a running task. Expected ≥ 45 fps on an integrated GPU at 1080p. If below, apply in order: `Background.tsx` particle counts 200/200/100 → 120/120/60; `ReactorRing` `BAR_COUNT` 48 → 32; `NeuralEdge` tube `tubularSegments` 40 → 24; drop `<Noise>`.
+- [x] **Step 4: Frame-rate check** — devtools → Performance → record 10s idle and 10s with a running task. Expected ≥ 45 fps on an integrated GPU at 1080p. If below, apply in order: `Background.tsx` particle counts 200/200/100 → 120/120/60; `ReactorRing` `BAR_COUNT` 48 → 32; `NeuralEdge` tube `tubularSegments` 40 → 24; drop `<Noise>`.
 
-- [ ] **Step 5: Commit final build**
+- [x] **Step 5: Commit final build**
 
 ```bash
 git add -A && git commit -m "build: jarvis 3d immersion + visual overhaul production build"
