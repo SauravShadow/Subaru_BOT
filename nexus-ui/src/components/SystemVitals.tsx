@@ -30,7 +30,7 @@ export function SystemVitals() {
 
   return (
     <div style={{
-      position: 'fixed', bottom: 16, left: '50%', transform: 'translateX(-50%)',
+      position: 'fixed', bottom: 74, left: '50%', transform: 'translateX(-50%)',
       zIndex: 40, padding: '6px 14px',
       background: 'rgba(8, 14, 28, 0.85)', backdropFilter: 'blur(12px)',
       border: '1px solid rgba(0, 240, 255, 0.12)', borderRadius: 8,
