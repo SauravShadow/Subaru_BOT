@@ -19,6 +19,7 @@ import { BrowserViewport } from './BrowserViewport'
 import { DesignPreviewPanel } from './DesignPreviewPanel'
 import { SystemVitals } from './SystemVitals'
 import { ErrorFlash } from './ErrorFlash'
+import { BootOverlay } from './BootOverlay'
 import { useNexusStore } from '../store'
 import { AGENT_POSITIONS, workerPosition } from '../types'
 import { useCommandPalette } from '../hooks/useCommandPalette'
@@ -175,6 +176,8 @@ export function NexusScene() {
         onAction={(id) => palette.runAction(id)}
         onClose={() => palette.setOpen(false)}
       />
+
+      <BootOverlay />
     </div>
   )
 }
