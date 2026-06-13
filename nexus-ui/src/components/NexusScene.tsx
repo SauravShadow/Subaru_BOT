@@ -6,6 +6,7 @@ import type { CameraControls as CameraControlsImpl } from '@react-three/drei'
 import { CameraDirector } from './CameraDirector'
 import { ReactorRing } from './ReactorRing'
 import { EdgeTaskLabel } from './EdgeTaskLabel'
+import { HoloBrowser } from './HoloBrowser'
 import { Background } from './Background'
 import { CeoNode } from './CeoNode'
 import { AgentNode } from './AgentNode'
@@ -136,6 +137,7 @@ export function NexusScene() {
                   workerId={id}
                 />
                 <EdgeTaskLabel workerId={id} start={ceoPos} end={pos} />
+                {id === 'browser' && <HoloBrowser position={pos} />}
                 <AgentNode
                   agent={agent}
                   position={pos}
