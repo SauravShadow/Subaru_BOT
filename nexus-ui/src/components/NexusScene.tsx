@@ -17,11 +17,9 @@ import { BrowserViewport } from './BrowserViewport'
 import { DesignPreviewPanel } from './DesignPreviewPanel'
 import { SystemVitals } from './SystemVitals'
 import { useNexusStore } from '../store'
-import { AGENT_POSITIONS } from '../types'
+import { AGENT_POSITIONS, workerPosition } from '../types'
 import { useCommandPalette } from '../hooks/useCommandPalette'
 import { useVoice } from '../hooks/useVoice'
-
-const WORKER_IDS = ['backend', 'frontend', 'qa', 'devops', 'browser'] as const
 
 interface HoverState {
   agentId: string
@@ -108,31 +106,33 @@ export function NexusScene() {
           />
         )}
 
-        {/* Worker nodes + edges */}
-        {WORKER_IDS.map(id => {
-          const agent = agents[id]
-          if (!agent) return null
-          const pos = AGENT_POSITIONS[id]!
-          const edge = edges.find(e => e.to === id)
-          const dimmed = !!selectedAgent && selectedAgent !== id
-          return (
-            <group key={id}>
-              <NeuralEdge
-                start={ceoPos}
-                end={pos}
-                isActive={edge?.isActive ?? false}
-                workerId={id}
-              />
-              <AgentNode
-                agent={agent}
-                position={pos}
-                dimmed={dimmed}
-                onHoverEnter={handleHoverEnter}
-                onHoverLeave={handleHoverLeave}
-              />
-            </group>
-          )
-        })}
+        {/* Worker nodes + edges — dynamic roster (hired agents included) */}
+        {(() => {
+          const workerIds = Object.keys(agents).filter(id => id !== 'ceo')
+          return workerIds.map((id, i) => {
+            const agent = agents[id]
+            const pos = AGENT_POSITIONS[id] ?? workerPosition(i, workerIds.length)
+            const edge = edges.find(e => e.to === id)
+            const dimmed = !!selectedAgent && selectedAgent !== id
+            return (
+              <group key={id}>
+                <NeuralEdge
+                  start={ceoPos}
+                  end={pos}
+                  isActive={edge?.isActive ?? false}
+                  workerId={id}
+                />
+                <AgentNode
+                  agent={agent}
+                  position={pos}
+                  dimmed={dimmed}
+                  onHoverEnter={handleHoverEnter}
+                  onHoverLeave={handleHoverLeave}
+                />
+              </group>
+            )
+          })
+        })()}
 
         <CameraControls />
         <PostProcessing />

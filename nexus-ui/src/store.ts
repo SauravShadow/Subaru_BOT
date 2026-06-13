@@ -102,9 +102,11 @@ export const useNexusStore = create<NexusStore>((set) => ({
           list.forEach(a => {
             agents[a.id] = { ...defaultAgent(a.id, a.name, a.role), ...agents[a.id] }
           })
-          // Reset stale active edges on reconnect
-          edges.forEach(e => { e.isActive = false })
-          break
+          const workerIds = list.map(a => a.id).filter(id => id !== 'ceo')
+          const rebuilt = (workerIds.length ? workerIds : WORKER_IDS).map(id => ({
+            from: 'ceo' as const, to: id, isActive: false,
+          }))
+          return { agents, edges: rebuilt, notifications }
         }
 
         case 'thinking':

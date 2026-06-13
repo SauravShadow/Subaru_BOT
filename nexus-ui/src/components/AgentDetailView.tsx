@@ -1,7 +1,7 @@
 // nexus-ui/src/components/AgentDetailView.tsx
 import { useEffect, useRef, useState, KeyboardEvent } from 'react'
 import { useNexusStore, sendWsMessage } from '../store'
-import { AGENT_COLORS } from '../types'
+import { agentColor } from '../types'
 import { NodeFlowPanel } from './NodeFlowPanel'
 import { useVoice } from '../hooks/useVoice'
 
@@ -13,7 +13,7 @@ export function AgentDetailView() {
   const [mounted, setMounted] = useState(false)
   const termRef = useRef<HTMLDivElement>(null)
 
-  const color = AGENT_COLORS[selectedId ?? ''] ?? '#00f0ff'
+  const color = agentColor(selectedId ?? '')
 
   const handleTranscript = (text: string) => {
     if (!agent) return

@@ -1,7 +1,7 @@
 // nexus-ui/src/components/HoverCard.tsx
 import { useEffect, useRef } from 'react'
 import { useNexusStore } from '../store'
-import { AGENT_COLORS } from '../types'
+import { agentColor } from '../types'
 
 interface HoverCardProps {
   agentId: string
@@ -25,7 +25,7 @@ export function HoverCard({ agentId, x, y }: HoverCardProps) {
   })
 
   if (!agent) return null
-  const color = AGENT_COLORS[agentId] ?? '#00f0ff'
+  const color = agentColor(agentId)
   const lastOutput = agent.recentOutput[agent.recentOutput.length - 1] ?? '—'
   const truncated = lastOutput.length > 48 ? lastOutput.slice(0, 48) + '…' : lastOutput
 

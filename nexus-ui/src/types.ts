@@ -64,6 +64,27 @@ export const AGENT_POSITIONS: Record<string, [number, number, number]> = {
   browser:  [3,  0,   -3],
 }
 
+export const CEO_POSITION: [number, number, number] = [0, 0.5, 4]
+
+/** Place worker `index` of `total` on a 200° arc behind the CEO, radius 5.5. */
+export function workerPosition(index: number, total: number): [number, number, number] {
+  const arc = (200 * Math.PI) / 180
+  const start = Math.PI / 2 + arc / 2
+  const angle = total <= 1 ? Math.PI / 2 : start - (arc * index) / (total - 1)
+  const r = 5.5
+  return [Math.cos(angle) * r, 0, CEO_POSITION[2] - Math.sin(angle) * r]
+}
+
+const FALLBACK_PALETTE = ['#22d3ee', '#a3e635', '#fb7185', '#fbbf24', '#34d399', '#818cf8']
+
+/** Identity color for any agent id — known agents keep their color, custom ids hash into a palette. */
+export function agentColor(id: string): string {
+  if (AGENT_COLORS[id]) return AGENT_COLORS[id]
+  let h = 0
+  for (const ch of id) h = (h * 31 + ch.charCodeAt(0)) >>> 0
+  return FALLBACK_PALETTE[h % FALLBACK_PALETTE.length]
+}
+
 export const AGENT_RADII: Record<string, number> = {
   ceo:      0.9,
   backend:  0.6,
