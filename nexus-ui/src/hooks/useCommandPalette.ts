@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback } from 'react'
-import { useNexusStore, connectWebSocket } from '../store'
+import { useNexusStore, connectWebSocket, sendWsMessage } from '../store'
+import { toggleWakeWord } from './useWakeWord'
 
 export interface PaletteAction {
   id: string
@@ -35,16 +36,19 @@ export function useCommandPalette() {
     { id: 'queue-show',   label: 'Show work queue',    group: 'WORK QUEUE' },
     { id: 'notif-show',   label: 'Show notifications', group: 'WORK QUEUE' },
     { id: 'tts-toggle',   label: 'Toggle voice / TTS', group: 'VOICE' },
+    { id: 'wake-toggle',  label: 'Toggle wake word ("Nexus …")', group: 'VOICE' },
     { id: 'ws-reconnect', label: 'Reconnect WebSocket', group: 'SYSTEM' },
   ]
 
-  const filtered = query.trim()
+  const matched = query.trim()
     ? actions.filter(a => a.label.toLowerCase().includes(query.toLowerCase()))
     : actions
+  const filtered: PaletteAction[] = matched.length > 0 ? matched : [
+    { id: 'ask-subaru', label: `Ask Subaru: "${query.trim()}"`, group: 'COMMAND', accent: '#f59e0b' },
+  ]
 
   const runAction = useCallback((id: string, toggleTts?: () => void) => {
     setOpen(false)
-    setQuery('')
 
     if (id.startsWith('agent-')) {
       selectAgent(id.replace('agent-', ''))
@@ -54,10 +58,17 @@ export function useCommandPalette() {
       setIslandTab('notifications')
     } else if (id === 'tts-toggle') {
       toggleTts?.()
+    } else if (id === 'wake-toggle') {
+      toggleWakeWord()
+    } else if (id === 'ask-subaru') {
+      const text = query.trim()
+      if (text) sendWsMessage({ type: 'message', agent: 'ceo', text })
     } else if (id === 'ws-reconnect') {
       connectWebSocket()
     }
-  }, [selectAgent, setIslandTab])
+
+    setQuery('')
+  }, [selectAgent, setIslandTab, query])
 
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {

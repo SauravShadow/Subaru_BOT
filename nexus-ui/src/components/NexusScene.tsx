@@ -28,6 +28,7 @@ import { useNexusStore } from '../store'
 import { AGENT_POSITIONS, workerPosition } from '../types'
 import { useCommandPalette } from '../hooks/useCommandPalette'
 import { useVoice } from '../hooks/useVoice'
+import { useWakeWord } from '../hooks/useWakeWord'
 
 interface HoverState {
   agentId: string
@@ -47,6 +48,7 @@ export function NexusScene() {
 
   useEffect(() => { if (opsRequest) setOpsOpen(true) }, [opsRequest])
   const { isSpeaking } = useVoice(null, () => {})
+  useWakeWord()
 
   const palette = useCommandPalette()
 
