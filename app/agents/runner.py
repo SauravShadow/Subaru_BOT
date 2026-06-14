@@ -448,7 +448,7 @@ def _build_gemini_prompt(agent_id: str, user_msg: str) -> str:
         tag_list = ", ".join(f"[{t}:...]" for t in safe_tags)
         tool_note = (
             "IMPORTANT: You are responding via Gemini API (limited tool access). "
-            "Do NOT output [BASH:], [READ:], [WRITE:] tags — those "
+            "Do NOT output [BASH:], [READ:], [WRITE:], [DELEGATE:] tags — those "
             "require Claude's code execution and won't work here. However, you "
             f"MUST use your role-specific action tags ({tag_list}) exactly as "
             "defined in your persona above whenever the task calls for them — "
@@ -458,7 +458,7 @@ def _build_gemini_prompt(agent_id: str, user_msg: str) -> str:
         tool_note = (
             "IMPORTANT: You are responding via Gemini API (limited tool access). "
             "Answer conversationally and helpfully. Do NOT output [BASH:], [READ:], "
-            "[WRITE:], or similar code-execution tool tags."
+            "[WRITE:], or similar execution tool tags."
         )
 
     if agent_id == "ceo":

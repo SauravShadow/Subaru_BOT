@@ -12,12 +12,12 @@ async def test_navigate_returns_title_and_screenshot_path():
     mock_page.goto = AsyncMock()
     mock_page.screenshot = AsyncMock()
     mock_page.close = AsyncMock()
+    # page.url is a sync property in Playwright, not a coroutine
+    type(mock_page).url = PropertyMock(return_value="https://example.com")
+    # is_closed is called as sync-or-async in _get_page; make it sync False
+    mock_page.is_closed = MagicMock(return_value=False)
 
-    mock_browser = MagicMock()
-    mock_browser.is_connected.return_value = True
-    mock_browser.new_page = AsyncMock(return_value=mock_page)
-
-    with patch("app.services.browser._get_browser", new=AsyncMock(return_value=mock_browser)):
+    with patch("app.services.browser._get_page", new=AsyncMock(return_value=mock_page)):
         result = await navigate("https://example.com")
 
     assert result["title"] == "Google"
@@ -30,16 +30,11 @@ async def test_extract_text_returns_string():
     from app.services.browser import extract_text
 
     mock_page = AsyncMock()
-    mock_page.goto = AsyncMock()
     mock_page.inner_text = AsyncMock(return_value="Hello World")
-    mock_page.close = AsyncMock()
+    mock_page.is_closed = MagicMock(return_value=False)
 
-    mock_browser = MagicMock()
-    mock_browser.is_connected.return_value = True
-    mock_browser.new_page = AsyncMock(return_value=mock_page)
-
-    with patch("app.services.browser._get_browser", new=AsyncMock(return_value=mock_browser)):
-        result = await extract_text("https://example.com", "body")
+    with patch("app.services.browser._get_page", new=AsyncMock(return_value=mock_page)):
+        result = await extract_text("body")
 
     assert result == "Hello World"
 
