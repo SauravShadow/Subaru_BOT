@@ -31,6 +31,7 @@ class WorkerState(TypedDict):
     messages: Annotated[list, add_messages]
     result: str
     new_artifacts: dict
+    worker_results: Annotated[list[dict], operator.add]
 
 
 class EmailState(TypedDict):

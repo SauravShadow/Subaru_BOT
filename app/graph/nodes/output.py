@@ -46,4 +46,5 @@ async def output_node(state: WorkerState, config: RunnableConfig) -> dict:
     return {
         "new_artifacts": _extract_artifacts(result),
         "result": result,
+        "worker_results": [{"agent": agent_id, "result": result}],
     }
