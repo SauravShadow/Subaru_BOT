@@ -18,7 +18,6 @@ from app.agents.tools import (
     local_bash, local_read, local_write, local_edit,
     parse_tool_call, summarize_output,
 )
-from app.output import pipeline
 from app.state import manager as state
 import pytz as _pytz
 from app.services import memory as mem_svc
