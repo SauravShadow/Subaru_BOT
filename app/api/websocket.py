@@ -108,12 +108,6 @@ def _translate_event(event: dict, thread_id: str) -> dict | None:
         err = str(data.get("error", "unknown error"))[:200]
         return {"type": "error", "agent": agent_id or "unknown", "message": err, "thread_id": thread_id}
 
-    if kind == "on_chat_model_stream":
-        chunk = data.get("chunk", {})
-        content = getattr(chunk, "content", "") if hasattr(chunk, "content") else ""
-        if content:
-            return {"type": "assistant", "agent": agent_id or "ceo", "message": {"content": content}, "thread_id": thread_id}
-
     return None
 
 

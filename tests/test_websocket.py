@@ -81,3 +81,18 @@ async def test_run_direct_rejects_unknown_agent(monkeypatch):
     monkeypatch.setattr(ws_module, "broadcast_event", fake_broadcast)
     await ws_module._run_direct("nonexistent_agent_xyz", "hi", "claude")
     assert events and events[0]["type"] == "error"
+
+
+def test_translate_event_ignores_chat_model_stream():
+    from app.api.websocket import _translate_event
+
+    class _Chunk:
+        content = "some streamed text"
+
+    event = {
+        "event": "on_chat_model_stream",
+        "name": "ChatGoogleGenerativeAI",
+        "metadata": {},
+        "data": {"chunk": _Chunk()},
+    }
+    assert _translate_event(event, "t1") is None
