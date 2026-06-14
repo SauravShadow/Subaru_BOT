@@ -8,6 +8,7 @@ from langchain_core.runnables import RunnableConfig
 from app.agents.runner import run_claude_agent
 from app.graph.state import NexusState
 from app.graph import broadcast
+from app.output import pipeline
 
 logger = logging.getLogger(__name__)
 
@@ -40,6 +41,7 @@ async def ceo_node(state: NexusState, config: RunnableConfig) -> dict:
         task = f"{task}\n\n[REVISION REQUESTED]\n{state['revision_notes']}"
 
     response = await run_claude_agent("ceo", task, send)
+    await pipeline.process(response, "ceo", send)
     delegations = parse_delegations_from_response(response)
 
     return {

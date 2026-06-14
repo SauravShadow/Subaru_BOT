@@ -11,6 +11,7 @@ from fastapi.websockets import WebSocketDisconnect
 
 from app.agents import definitions as defs
 from app.graph import broadcast as bcast
+from app.output import pipeline as _output_pipeline
 
 logger = logging.getLogger(__name__)
 
@@ -232,7 +233,9 @@ async def _run_direct(agent_id: str, task: str, model: str) -> None:
     import app.agents.runner as runner
     await broadcast_event({"type": "delegation", "agent": agent_id})
     try:
-        await runner.run_agent(agent_id, task, broadcast_event, model)
+        result = await runner.run_agent(agent_id, task, broadcast_event, model)
+        if result and result.strip():
+            await _output_pipeline.process(result, agent_id, broadcast_event)
     except asyncio.CancelledError:
         raise
     except Exception as exc:
