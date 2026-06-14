@@ -31,6 +31,9 @@ def _parse_args(args: str) -> tuple[str, str]:
 
 async def handle(args: str, agent_id: str, send: Sender) -> tuple[str, bool]:
     text, emotion = _parse_args(args)
+    if agent_id != "ceo":
+        # CEO-only voice: workers report in text, never speak.
+        return text, False
     audio = await bark_client.speak(text, emotion)
     if audio:
         await send({"type": "audio", "mode": "speak", "data": audio})

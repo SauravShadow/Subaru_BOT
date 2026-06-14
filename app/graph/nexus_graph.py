@@ -1,15 +1,13 @@
 # app/graph/nexus_graph.py
 """Compiled nexus_graph — WebSocket-driven real-time orchestration graph."""
 import logging
-from typing import Literal
 
 from langgraph.graph import StateGraph, START, END
 from langgraph.types import Send
-from langchain_core.runnables import RunnableConfig
 
 from app.graph.state import NexusState
 from app.graph.nodes.ceo import ceo_node
-from app.graph.nodes.review import ceo_review_node
+from app.graph.nodes.wrapup import ceo_wrapup_node
 from app.graph.workers.base import make_worker_graph
 
 logger = logging.getLogger(__name__)
@@ -47,18 +45,11 @@ def route_after_ceo(state: NexusState):
     ]
 
 
-def route_after_review(state: NexusState) -> str:
-    verdict = state.get("ceo_verdict", "done")
-    if verdict in ("revise", "delegate_more"):
-        return "ceo_node"
-    return "__end__"
-
-
 def build_nexus_graph(checkpointer):
     graph = StateGraph(NexusState)
 
     graph.add_node("ceo_node", ceo_node)
-    graph.add_node("ceo_review_node", ceo_review_node)
+    graph.add_node("ceo_wrapup_node", ceo_wrapup_node)
 
     for agent_id in _KNOWN_AGENTS:
         graph.add_node(agent_id, _get_worker_subgraph(agent_id))
@@ -67,12 +58,8 @@ def build_nexus_graph(checkpointer):
     graph.add_conditional_edges("ceo_node", route_after_ceo, [END] + _KNOWN_AGENTS)
 
     for agent_id in _KNOWN_AGENTS:
-        graph.add_edge(agent_id, "ceo_review_node")
+        graph.add_edge(agent_id, "ceo_wrapup_node")
 
-    graph.add_conditional_edges(
-        "ceo_review_node",
-        route_after_review,
-        {"ceo_node": "ceo_node", "__end__": END},
-    )
+    graph.add_edge("ceo_wrapup_node", END)
 
     return graph.compile(checkpointer=checkpointer)

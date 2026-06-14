@@ -15,6 +15,7 @@ import pytz
 from croniter import croniter
 
 from app import config
+from app.api.run_queue import get_run_queue
 from app.services import standup
 
 logger = logging.getLogger(__name__)
@@ -238,5 +239,14 @@ def _maybe_fire(routine: dict, fired: dict) -> None:
         return   # already fired this minute
 
     fired[fire_key] = datetime.utcnow().isoformat()
-    asyncio.create_task(run_routine(routine))
+
+    async def _enqueue() -> None:
+        from app.api.websocket import broadcast_event
+        await get_run_queue().enqueue(
+            {"coro_factory": (lambda r=routine: run_routine(r)),
+             "label": f"routine:{routine['id']}"},
+            broadcast_event,
+        )
+
+    asyncio.create_task(_enqueue())
     logger.info("Fired routine '%s' (schedule=%s)", routine["id"], routine["schedule"])

@@ -47,6 +47,10 @@ async def lifespan(app: FastAPI):
     asyncio.create_task(email_poller.start(app.state.email_graph))
     asyncio.create_task(scheduler.start_scheduler_loop())
 
+    # Global FIFO run queue — serializes all CEO/worker runs (one at a time)
+    from app.api.run_queue import get_run_queue
+    get_run_queue().start()
+
     yield
 
     from app.graph.checkpointer import close_checkpointer

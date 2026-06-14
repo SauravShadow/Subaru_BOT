@@ -11,6 +11,7 @@ function defaultAgent(id: string, name = id, role = ''): AgentState {
     stepCount: 0,
     recentSteps: [],
     checkpoints: [],
+    streamPreview: '',
   }
 }
 
@@ -182,6 +183,23 @@ export const useNexusStore = create<NexusStore>((set) => ({
           break
         }
 
+        case 'queued': {
+          addNotif(
+            `Task queued (#${event.position ?? '?'}): ${String(event.task ?? '').slice(0, 60)}`,
+            'system',
+          )
+          break
+        }
+
+        case 'ceo_stream': {
+          const prev = agents['ceo'] ?? defaultAgent('ceo')
+          updateAgent('ceo', {
+            status: 'thinking',
+            streamPreview: `${prev.streamPreview ?? ''}${event.delta ?? ''}`,
+          })
+          break
+        }
+
         case 'assistant': {
           if (!agentId) break
           const raw = (event.message as { content?: unknown })?.content
@@ -198,6 +216,7 @@ export const useNexusStore = create<NexusStore>((set) => ({
               .join('')
           }
           if (!content.trim()) break
+          if (agentId === 'ceo') updateAgent('ceo', { streamPreview: '' })
           const prev3 = agents[agentId] ?? defaultAgent(agentId)
           updateAgent(agentId, {
             recentOutput: [...prev3.recentOutput, content].slice(-500)
@@ -336,7 +355,7 @@ export function connectWebSocket(model = 'claude'): void {
       // voiced every reply twice (fragmented Web Speech during the stream, then
       // the full Bark/utterance from the pipeline message). When bark_ok === true
       // the separate 'audio' event already played the reply.
-      if (data.type === 'assistant' && data.bark_ok === false) {
+      if (data.type === 'assistant' && data.bark_ok === false && data.agent === 'ceo') {
         const raw = (data.message as { content?: Array<{ type?: string; text?: string }> })?.content
         const text = Array.isArray(raw)
           ? raw.filter(b => b.type === 'text').map(b => b.text ?? '').join(' ')

@@ -120,3 +120,18 @@ async def test_output_node_calls_pipeline_exactly_once():
         args = mock_proc.call_args[0]
         assert args[0] == "[SPEAK: hello]"
         assert args[1] == "backend"
+
+
+@pytest.mark.asyncio
+async def test_output_node_emits_worker_results():
+    from app.graph.nodes.output import output_node
+    from langchain_core.runnables import RunnableConfig
+
+    state = {"result": "[DONE: built the API]", "agent_id": "backend"}
+    config = RunnableConfig(configurable={"thread_id": "test-wr"})
+
+    with patch("app.graph.nodes.output.pipeline.process", new_callable=AsyncMock), \
+         patch("app.graph.broadcast.send", new_callable=AsyncMock):
+        out = await output_node(state, config)
+
+    assert out["worker_results"] == [{"agent": "backend", "result": "[DONE: built the API]"}]

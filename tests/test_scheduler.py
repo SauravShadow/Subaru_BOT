@@ -132,3 +132,35 @@ def test_get_routine_logs(tmp_path):
         logs = get_routine_logs("r1")
         assert len(logs) == 2
         assert all(l["routine_id"] == "r1" for l in logs)
+
+
+@pytest.mark.asyncio
+async def test_maybe_fire_enqueues_via_run_queue(monkeypatch):
+    import app.services.scheduler as sched
+
+    enqueued = []
+
+    class _FakeQueue:
+        async def enqueue(self, job, notify):
+            enqueued.append(job)
+
+    monkeypatch.setattr(sched, "get_run_queue", lambda: _FakeQueue(), raising=False)
+
+    captured = {}
+
+    def fake_create_task(coro):
+        captured["coro"] = coro
+        return None
+
+    monkeypatch.setattr(sched.asyncio, "create_task", fake_create_task)
+
+    routine = {"id": "r1", "name": "R", "schedule": "* * * * *",
+               "timezone": "UTC", "enabled": True, "agent": "ceo", "prompt": "hi"}
+    sched._maybe_fire(routine, {})
+
+    assert "coro" in captured
+    # _maybe_fire scheduled the enqueue coroutine via create_task (patched to
+    # capture). Await it directly in the running loop — robust to suite ordering.
+    await captured["coro"]
+    assert len(enqueued) == 1
+    assert enqueued[0]["label"] == "routine:r1"
