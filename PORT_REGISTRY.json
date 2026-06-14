@@ -35,25 +35,10 @@
       "service": "habit-tracker",
       "note": "habit.saurav-info.xyz"
     },
-    "8100": {
-      "subdomain": "go",
-      "service": "expense-planner",
-      "note": "SpendSmart \u2014 go.saurav-info.xyz"
-    },
-    "8200": {
-      "subdomain": "finance",
-      "service": "wealthwise",
-      "note": "WealthWise \u2014 finance.saurav-info.xyz"
-    },
     "9000": {
       "subdomain": "stream",
       "service": "stream-app",
       "note": "stream.saurav-info.xyz"
-    },
-    "8300": {
-      "subdomain": "tree",
-      "service": "family-tree-app",
-      "note": "External user sauravkr031 - family tree D3.js app"
     },
     "8085": {
       "subdomain": "quotes",
@@ -70,25 +55,10 @@
       "service": "rezero-site",
       "note": ""
     },
-    "8500": {
-      "subdomain": "",
-      "service": "book-recommender",
-      "note": "cwd:/home/subaru/projects/book-recommender"
-    },
-    "8600": {
-      "subdomain": "cid",
-      "service": "",
-      "note": ""
-    },
     "8301": {
       "subdomain": "",
       "service": "",
-      "note": "freed — was wrongly assigned to pipeline-test"
-    },
-    "8501": {
-      "subdomain": "pipeline-test",
-      "service": "pipeline-test",
-      "note": "cwd:/home/subaru/projects/pipeline-test"
+      "note": "freed \u2014 was wrongly assigned to pipeline-test"
     }
   },
   "subdomains": {
@@ -101,12 +71,10 @@
     "go": 8100,
     "finance": 8200,
     "stream": 9000,
-    "tree": 8300,
     "quotes": 8085,
     "ping": 8400,
     "rezero": 8095,
-    "cid": 8600,
-    "pipeline-test": 8501
+    "cid": 8600
   },
   "reserved_ports": [
     80,

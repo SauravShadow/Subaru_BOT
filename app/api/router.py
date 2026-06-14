@@ -62,25 +62,6 @@ async def api_new_project(body: dict):
     return state.save_project(body)
 
 
-@router.get("/api/workqueue")
-async def api_wq():
-    return []
-
-
-@router.post("/api/workqueue/{item_id}/complete")
-async def api_complete_item(item_id: int, body: dict):
-    return {"ok": False, "error": "work queue replaced by LangGraph"}
-
-
-@router.post("/api/workqueue/{item_id}/force-complete")
-async def api_force_complete(item_id: int):
-    return {"ok": False, "error": "work queue replaced by LangGraph"}
-
-
-@router.post("/api/workqueue/{item_id}/reset")
-async def api_reset_item(item_id: int):
-    return {"ok": False, "error": "work queue replaced by LangGraph"}
-
 
 @router.post("/api/hire")
 async def api_hire(body: dict):
@@ -133,10 +114,6 @@ async def api_email_tasks():
     return email_poller.list_tasks()
 
 
-@router.get("/api/task-history")
-async def api_task_history():
-    return []
-
 
 @router.get("/api/ceo-sessions")
 async def api_ceo_sessions():
@@ -182,10 +159,6 @@ async def api_ceo_sessions():
         })
     return result
 
-
-@router.get("/api/email-tasks/{task_id}")
-async def api_email_task_detail(task_id: str):
-    return JSONResponse({"error": "not found"}, status_code=404)
 
 
 @router.post("/api/email-tasks/poll")

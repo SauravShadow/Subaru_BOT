@@ -233,20 +233,6 @@ export const useNexusStore = create<NexusStore>((set) => ({
           }
           break
 
-        case 'browser_frame':
-          if (event.frame) {
-            return {
-              agents, edges, notifications,
-              browserVisible: true,
-              browserView: {
-                image: event.frame as string, mime: 'image/jpeg' as const,
-                url: (event.url as string) ?? '', caption: (event.action as string) ?? '',
-                ts: Date.now(),
-              },
-            }
-          }
-          break
-
         case 'browser_result':
           addNotif(`Maya: ${String(event.summary ?? event.message ?? 'browser job finished').slice(0, 80)}`, 'done')
           break
@@ -344,7 +330,13 @@ export function connectWebSocket(model = 'claude'): void {
 
       useNexusStore.getState().handleEvent(data)
 
-      if (data.type === 'assistant' && data.bark_ok !== true) {
+      // Speech fallback fires ONLY on the finalized pipeline message that
+      // produced no Bark audio (bark_ok === false). Streaming token chunks and
+      // intermediate assistant messages omit bark_ok entirely — speaking those
+      // voiced every reply twice (fragmented Web Speech during the stream, then
+      // the full Bark/utterance from the pipeline message). When bark_ok === true
+      // the separate 'audio' event already played the reply.
+      if (data.type === 'assistant' && data.bark_ok === false) {
         const raw = (data.message as { content?: Array<{ type?: string; text?: string }> })?.content
         const text = Array.isArray(raw)
           ? raw.filter(b => b.type === 'text').map(b => b.text ?? '').join(' ')

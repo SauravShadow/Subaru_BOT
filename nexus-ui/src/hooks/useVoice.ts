@@ -1,15 +1,42 @@
 import { useState, useEffect, useCallback, useRef } from 'react'
-import { onAudioEvent, offAudioEvent, onSpeechFallback, offSpeechFallback } from '../store'
+import { onAudioEvent, onSpeechFallback } from '../store'
 
 const TTS_KEY = 'nexus-tts-enabled'
 
 type SpeechRecognitionType = unknown
 
-// Module-level AudioQueue — shared across all hook instances
+// ── Module-level singletons (shared across ALL useVoice instances) ───────────
+// Multiple components mount useVoice (NexusScene, CommandBar, and
+// AgentDetailView when open). Audio playback and speech synthesis MUST be
+// registered EXACTLY ONCE — otherwise every reply is voiced once per mounted
+// instance (the "bot says everything twice" bug: NexusScene + CommandBar are
+// both always mounted → 2×). Only the per-instance microphone (SpeechRecognition)
+// stays local, since just the focused input should capture voice.
+
+let _ttsEnabled: boolean = (() => {
+  try { return localStorage.getItem(TTS_KEY) !== 'false' } catch { return true }
+})()
+
+// isSpeaking pub/sub — every mounted hook subscribes so its UI reflects playback.
+const _speakingSubs = new Set<(v: boolean) => void>()
+let _isSpeaking = false
+function _setSpeaking(v: boolean) {
+  _isSpeaking = v
+  _speakingSubs.forEach(fn => fn(v))
+}
+
+// ttsEnabled pub/sub — toggling in one place updates every consumer.
+const _ttsSubs = new Set<(v: boolean) => void>()
+function _setTtsEnabled(v: boolean) {
+  _ttsEnabled = v
+  try { localStorage.setItem(TTS_KEY, String(v)) } catch {}
+  _ttsSubs.forEach(fn => fn(v))
+}
+
+// Single shared audio queue — plays Bark clips sequentially.
 const AudioQueue = {
   _queue: [] as Array<{ base64: string; mode: string }>,
   _playing: false,
-  _onPlayingChange: null as ((v: boolean) => void) | null,
 
   push(base64: string, mode: string) {
     this._queue.push({ base64, mode })
@@ -19,14 +46,13 @@ const AudioQueue = {
   async _next() {
     if (!this._queue.length) {
       this._playing = false
-      this._onPlayingChange?.(false)
+      _setSpeaking(false)
       return
     }
     this._playing = true
-    this._onPlayingChange?.(true)
+    _setSpeaking(true)
 
-    const { base64, mode: _mode } = this._queue.shift()!
-    void _mode // Suppress unused parameter warning
+    const { base64 } = this._queue.shift()!
     try {
       const binary = atob(base64)
       const bytes = new Uint8Array(binary.length)
@@ -34,14 +60,8 @@ const AudioQueue = {
       const blob = new Blob([bytes], { type: 'audio/wav' })
       const url = URL.createObjectURL(blob)
       const el = new Audio(url)
-      el.onended = () => {
-        URL.revokeObjectURL(url)
-        this._next()
-      }
-      el.onerror = () => {
-        URL.revokeObjectURL(url)
-        this._next()
-      }
+      el.onended = () => { URL.revokeObjectURL(url); this._next() }
+      el.onerror = () => { URL.revokeObjectURL(url); this._next() }
       await el.play()
     } catch {
       this._next()
@@ -49,52 +69,56 @@ const AudioQueue = {
   },
 }
 
+// Register the global playback + speech-fallback listeners EXACTLY ONCE.
+let _playbackInit = false
+function _initPlaybackOnce() {
+  if (_playbackInit) return
+  _playbackInit = true
+
+  // Bark audio from the backend
+  onAudioEvent((base64, mode) => {
+    if (!_ttsEnabled) return
+    AudioQueue.push(base64, mode)
+  })
+
+  // Web Speech fallback when Bark produced no audio
+  onSpeechFallback((text) => {
+    if (!_ttsEnabled) return
+    if (AudioQueue._playing) return                 // Bark audio wins
+    if (!('speechSynthesis' in window)) return
+    const clean = text
+      .replace(/```[\s\S]*?```/g, ' code block omitted ')
+      .replace(/[*_#>`]/g, '')
+      .slice(0, 300)
+    if (!clean.trim()) return
+    window.speechSynthesis.cancel()
+    const utter = new SpeechSynthesisUtterance(clean)
+    utter.rate = 1.05
+    utter.onstart = () => _setSpeaking(true)
+    utter.onend = () => _setSpeaking(false)
+    window.speechSynthesis.speak(utter)
+  })
+}
+
 export function useVoice(_agentId: string | null, onTranscript: (text: string) => void) {
   const [isListening, setIsListening] = useState(false)
-  const [isSpeaking, setIsSpeaking] = useState(false)
-  const [ttsEnabled, setTtsEnabled] = useState(() => {
-    try { return localStorage.getItem(TTS_KEY) !== 'false' } catch { return true }
-  })
+  const [isSpeaking, setIsSpeaking] = useState(_isSpeaking)
+  const [ttsEnabled, setTtsEnabledState] = useState(_ttsEnabled)
 
   const recogRef = useRef<SpeechRecognitionType | null>(null)
 
-  // Wire AudioQueue → isSpeaking state
+  // Initialize global playback once; subscribe to shared speaking/tts state.
   useEffect(() => {
-    AudioQueue._onPlayingChange = setIsSpeaking
-    return () => { AudioQueue._onPlayingChange = null }
+    _initPlaybackOnce()
+    _speakingSubs.add(setIsSpeaking)
+    _ttsSubs.add(setTtsEnabledState)
+    setIsSpeaking(_isSpeaking)
+    setTtsEnabledState(_ttsEnabled)
+    return () => {
+      _speakingSubs.delete(setIsSpeaking)
+      _ttsSubs.delete(setTtsEnabledState)
+    }
   }, [])
-
-  // Listen for audio events from WS
-  useEffect(() => {
-    if (!ttsEnabled) return
-    const cb = (base64: string, mode: string) => {
-      AudioQueue.push(base64, mode)
-    }
-    onAudioEvent(cb)
-    return () => offAudioEvent(cb)
-  }, [ttsEnabled])
-
-  // Web Speech fallback when Bark produced no audio
-  useEffect(() => {
-    if (!ttsEnabled) return
-    const cb = (text: string) => {
-      if (AudioQueue._playing) return                 // Bark audio wins
-      if (!('speechSynthesis' in window)) return
-      const clean = text
-        .replace(/```[\s\S]*?```/g, ' code block omitted ')
-        .replace(/[*_#>`]/g, '')
-        .slice(0, 300)
-      if (!clean.trim()) return
-      window.speechSynthesis.cancel()
-      const utter = new SpeechSynthesisUtterance(clean)
-      utter.rate = 1.05
-      utter.onstart = () => setIsSpeaking(true)
-      utter.onend = () => setIsSpeaking(false)
-      window.speechSynthesis.speak(utter)
-    }
-    onSpeechFallback(cb)
-    return () => offSpeechFallback(cb)
-  }, [ttsEnabled])
 
   const startListening = useCallback(() => {
     const SpeechRecognition =
@@ -131,11 +155,7 @@ export function useVoice(_agentId: string | null, onTranscript: (text: string) =
   }, [])
 
   const toggleTts = useCallback(() => {
-    setTtsEnabled(prev => {
-      const next = !prev
-      try { localStorage.setItem(TTS_KEY, String(next)) } catch {}
-      return next
-    })
+    _setTtsEnabled(!_ttsEnabled)
   }, [])
 
   const hasSpeechRecognition = !!(
