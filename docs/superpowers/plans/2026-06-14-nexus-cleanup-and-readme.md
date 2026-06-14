@@ -1083,3 +1083,7 @@ cd /mnt/HC_Volume_105874680/virtual-company
 git add -A
 git commit -m "build: full cleanup — pipeline fix, dead code removed, standup wired, READMEs complete"
 ```
+
+## Completion
+
+All 8 tasks completed on 2026-06-14. Frontend build passes. All backend tests pass (200/200). Fixed 4 pre-existing test failures: browser_playwright tests updated to patch _get_page (persistent-page arch) and use PropertyMock for page.url; executor_gemini prompt strings aligned with test spec ([DELEGATE:] added to tool ban, "execution" not "code-execution"). Dead routes /api/workqueue and /api/task-history have no API handler; SPA returns 200 HTML as expected for a React SPA. morning_standup routine seeds correctly with enabled=False.
