@@ -98,3 +98,25 @@ def test_registry_includes_browser_tags():
     registry._registry = None  # force a rebuild so the new imports are exercised
     reg = registry.get_registry()
     assert {"BROWSER_APPLY", "BROWSER_DISCOVER", "BROWSER_COMPANY", "BROWSER_PROFILE_MATCH"} <= reg.keys()
+
+
+import pytest
+from unittest.mock import AsyncMock, patch
+
+@pytest.mark.asyncio
+async def test_output_node_calls_pipeline_exactly_once():
+    """output_node must call pipeline.process exactly once — it is the canonical
+    pipeline caller for all LangGraph worker responses."""
+    from app.graph.nodes.output import output_node
+    from langchain_core.runnables import RunnableConfig
+
+    state = {"result": "[SPEAK: hello]", "agent_id": "backend"}
+    config = RunnableConfig(configurable={"thread_id": "test-t1"})
+
+    with patch("app.graph.nodes.output.pipeline.process", new_callable=AsyncMock) as mock_proc, \
+         patch("app.graph.broadcast.send", new_callable=AsyncMock):
+        await output_node(state, config)
+        assert mock_proc.call_count == 1
+        args = mock_proc.call_args[0]
+        assert args[0] == "[SPEAK: hello]"
+        assert args[1] == "backend"

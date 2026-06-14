@@ -347,9 +347,6 @@ async def run_tgpt_agent(
     except Exception:
         pass
 
-    if full_resp.strip():
-        await pipeline.process(full_resp, agent_id, send)
-
     return full_resp
 
 
@@ -433,9 +430,6 @@ async def run_claude_agent(
             mem_svc.save_memory(agent_id, full_resp[:500], mem_type="agent_response", importance=0.3)
     except Exception:
         pass
-
-    if full_resp.strip():
-        await pipeline.process(full_resp, agent_id, send)
 
     return full_resp
 
@@ -532,7 +526,6 @@ async def run_gemini_agent(
         except Exception:
             pass
 
-        await pipeline.process(text, agent_id, send)
         return text
     except Exception as exc:
         logger.warning("Gemini API error (%s) — falling back to Claude", exc)
