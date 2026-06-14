@@ -134,7 +134,8 @@ def test_get_routine_logs(tmp_path):
         assert all(l["routine_id"] == "r1" for l in logs)
 
 
-def test_maybe_fire_enqueues_via_run_queue(monkeypatch):
+@pytest.mark.asyncio
+async def test_maybe_fire_enqueues_via_run_queue(monkeypatch):
     import app.services.scheduler as sched
 
     enqueued = []
@@ -158,7 +159,8 @@ def test_maybe_fire_enqueues_via_run_queue(monkeypatch):
     sched._maybe_fire(routine, {})
 
     assert "coro" in captured
-    import asyncio as _asyncio
-    _asyncio.get_event_loop().run_until_complete(captured["coro"])
+    # _maybe_fire scheduled the enqueue coroutine via create_task (patched to
+    # capture). Await it directly in the running loop — robust to suite ordering.
+    await captured["coro"]
     assert len(enqueued) == 1
     assert enqueued[0]["label"] == "routine:r1"
