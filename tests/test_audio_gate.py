@@ -39,3 +39,13 @@ async def test_worker_sing_emits_no_audio():
         lyrics, audio_sent = await sing.handle("la la | style: pop", "frontend", send)
     assert audio_sent is False
     bark.assert_not_called()
+
+
+def test_gemini_prompt_speak_mandate_is_ceo_only():
+    from app.agents.runner import _build_gemini_prompt
+    ceo_prompt = _build_gemini_prompt("ceo", "hi")
+    worker_prompt = _build_gemini_prompt("backend", "hi")
+    assert "[SPEAK:" in ceo_prompt
+    assert "MANDATORY" in ceo_prompt
+    # Workers must NOT be told to speak
+    assert "[SPEAK:" not in worker_prompt

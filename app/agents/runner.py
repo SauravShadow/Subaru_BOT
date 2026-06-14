@@ -443,6 +443,13 @@ def _build_gemini_prompt(agent_id: str, user_msg: str) -> str:
     # (Gemini can't execute tools, so it just prints them as text)
     clean_persona = persona.split("AVAILABLE TOOLS:")[0] if "AVAILABLE TOOLS:" in persona else persona
 
+    # For non-CEO agents, strip the VOICE DIRECTIVE line (which contains [SPEAK:])
+    # from the persona — the voice_block built below handles speak instructions.
+    if agent_id != "ceo" and "VOICE DIRECTIVE:" in clean_persona:
+        lines = clean_persona.splitlines()
+        lines = [ln for ln in lines if not ln.startswith("VOICE DIRECTIVE:")]
+        clean_persona = "\n".join(lines)
+
     safe_tags = agent.get("gemini_safe_tags", [])
     if safe_tags:
         tag_list = ", ".join(f"[{t}:...]" for t in safe_tags)
@@ -478,14 +485,24 @@ def _build_gemini_prompt(agent_id: str, user_msg: str) -> str:
         for h in history[-(config.MAX_HISTORY):]
     )
 
+    if agent_id == "ceo":
+        voice_block = (
+            "MANDATORY — you MUST use these tags in EVERY response:\n"
+            "  [SPEAK: your full reply | emotion: calm|excited|sad|whisper|energetic]  — REQUIRED for ALL responses\n"
+            "    Match emotion to context. Example: [SPEAK: That's done! | emotion: excited]\n"
+            "    If asked to sing: [SING: full lyrics | style: genre]\n"
+        )
+    else:
+        voice_block = (
+            "REPORTING: Respond in plain text only. Do NOT use voice/audio tags — "
+            "only the CEO speaks aloud. State your results and any [ARTIFACT:...]/[DONE:...] tags as text.\n"
+        )
+
     live_ctx = _build_context_block(agent_id, user_msg)
     return (
         f"{clean_persona}\n\n"
         f"{tool_note}\n"
-        f"MANDATORY — you MUST use these tags in EVERY response:\n"
-        f"  [SPEAK: your full reply | emotion: calm|excited|sad|whisper|energetic]  — REQUIRED for ALL responses\n"
-        f"    Match emotion to context. Example: [SPEAK: That's done! | emotion: excited]\n"
-        f"    If asked to sing: [SING: full lyrics | style: genre]\n"
+        f"{voice_block}"
         f"OPTIONAL — you CAN also use these tags:\n"
         f"  [GENERATE_IMAGE: description]  — generate an image\n"
         f"    Example: [GENERATE_IMAGE: A futuristic city skyline at sunset, cyberpunk neon lights]\n"
