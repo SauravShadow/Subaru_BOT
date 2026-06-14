@@ -80,8 +80,7 @@ export function Background() {
   const posRef = useRef(makeAllPositions())
   const timeRef = useRef(0)
 
-  const agents = useNexusStore(s => s.agents)
-  const ceoStatus = agents['ceo']?.status ?? 'idle'
+  const ceoStatus = useNexusStore(s => s.agents['ceo']?.status ?? 'idle')
 
   const ceoLightIntensity = ceoStatus === 'working' ? 5.0 : ceoStatus === 'thinking' ? 3.5 : 2.0
 

@@ -1,5 +1,5 @@
 // nexus-ui/src/components/ReactorRing.tsx
-import { useMemo, useRef } from 'react'
+import { useMemo, useRef, useState, useEffect } from 'react'
 import { useFrame } from '@react-three/fiber'
 import { Billboard, Text } from '@react-three/drei'
 import * as THREE from 'three'
@@ -12,10 +12,9 @@ const CEO_POS: [number, number, number] = [0, 0.5, 4]
 export function ReactorRing() {
   const meshRef = useRef<THREE.InstancedMesh>(null!)
   const groupRef = useRef<THREE.Group>(null!)
-  const agents = useNexusStore(s => s.agents)
-
-  const busyCount = Object.values(agents)
-    .filter(a => a.status === 'working' || a.status === 'thinking').length
+  const busyCount = useNexusStore(s =>
+    Object.values(s.agents).filter(a => a.status === 'working' || a.status === 'thinking').length
+  )
 
   const dummy = useMemo(() => new THREE.Object3D(), [])
   const phases = useMemo(
@@ -37,7 +36,11 @@ export function ReactorRing() {
     meshRef.current.instanceMatrix.needsUpdate = true
   })
 
-  const clock = new Date().toTimeString().slice(0, 5)
+  const [clock, setClock] = useState(() => new Date().toTimeString().slice(0, 5))
+  useEffect(() => {
+    const id = setInterval(() => setClock(new Date().toTimeString().slice(0, 5)), 60_000)
+    return () => clearInterval(id)
+  }, [])
 
   return (
     <group position={CEO_POS}>
