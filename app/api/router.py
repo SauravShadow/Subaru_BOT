@@ -2,7 +2,6 @@
 All REST API routes for Shadow Garden.
 """
 import asyncio
-import json
 from datetime import datetime
 
 from fastapi import APIRouter, Request
@@ -62,7 +61,6 @@ async def api_new_project(body: dict):
     return state.save_project(body)
 
 
-
 @router.post("/api/hire")
 async def api_hire(body: dict):
     from app.agents.definitions import _worker_persona, AGENT_DEFS, custom_agents
@@ -114,7 +112,6 @@ async def api_email_tasks():
     return email_poller.list_tasks()
 
 
-
 @router.get("/api/ceo-sessions")
 async def api_ceo_sessions():
     """Group CEO conversation history into resumable sessions (30-min gap = new session)."""
@@ -158,7 +155,6 @@ async def api_ceo_sessions():
             "resume_msg":  last_user,
         })
     return result
-
 
 
 @router.post("/api/email-tasks/poll")
