@@ -11,6 +11,9 @@ from fastapi.websockets import WebSocketDisconnect
 
 from app.agents import definitions as defs
 from app.graph import broadcast as bcast
+from app.graph.nexus_graph import build_nexus_graph
+from app.graph.checkpointer import get_checkpointer
+from app.api.run_queue import get_run_queue
 from app.output import pipeline as _output_pipeline
 
 logger = logging.getLogger(__name__)
@@ -161,7 +164,6 @@ class Session:
 
 
 _sessions: set[Session] = set()
-_active_runs: dict[str, asyncio.Task] = {}
 
 
 async def broadcast_event(data: dict) -> None:
@@ -182,9 +184,6 @@ def _build_init_payload() -> dict:
 
 
 async def _run_and_stream(task: str, thread_id: str, model: str) -> None:
-    from app.graph.nexus_graph import build_nexus_graph
-    from app.graph.checkpointer import get_checkpointer
-
     cp = await get_checkpointer()
     graph = build_nexus_graph(cp)
 
@@ -192,6 +191,12 @@ async def _run_and_stream(task: str, thread_id: str, model: str) -> None:
         await broadcast_event(data)
 
     bcast.register(thread_id, send_fn)
+    await broadcast_event({
+        "type": "assistant",
+        "agent": "ceo",
+        "message": {"content": [{"type": "text", "text": "On it — planning…"}]},
+        "bark_ok": True,
+    })
     try:
         config = {"configurable": {"thread_id": thread_id, "model": model}}
         async for event in graph.astream_events(
@@ -255,28 +260,30 @@ async def ws_endpoint(ws: WebSocket, model: str = "claude") -> None:
 
             if msg_type == "message":
                 target = msg.get("agent") or "ceo"
+                text = msg["text"]
+                model = session.model
                 if target == "ceo":
-                    t = asyncio.create_task(
-                        _run_and_stream(msg["text"], thread_id, session.model)
-                    )
+                    job = {
+                        "coro_factory": (lambda t=text, m=model:
+                                         _run_and_stream(t, thread_id, m)),
+                        "label": text[:100],
+                    }
                 else:
-                    t = asyncio.create_task(
-                        _run_direct(target, msg["text"], session.model)
-                    )
-                _active_runs[thread_id] = t
+                    job = {
+                        "coro_factory": (lambda tg=target, t=text, m=model:
+                                         _run_direct(tg, t, m)),
+                        "label": f"{target}: {text[:80]}",
+                    }
+                await get_run_queue().enqueue(job, broadcast_event)
 
             elif msg_type == "cancel_worker":
-                task = _active_runs.pop(thread_id, None)
-                if task:
-                    task.cancel()
+                get_run_queue().cancel_current()
 
             elif msg_type == "model":
                 session.model = msg.get("model", session.model)
 
             elif msg_type == "clear":
-                task = _active_runs.pop(thread_id, None)
-                if task:
-                    task.cancel()
+                get_run_queue().clear()
 
     except WebSocketDisconnect:
         pass
@@ -284,9 +291,6 @@ async def ws_endpoint(ws: WebSocket, model: str = "claude") -> None:
         logger.exception("ws_endpoint error")
     finally:
         _sessions.discard(session)
-        task = _active_runs.pop(thread_id, None)
-        if task:
-            task.cancel()
 
 
 async def handle_browser_result(data: dict, model: str) -> None:

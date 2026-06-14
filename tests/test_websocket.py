@@ -96,3 +96,39 @@ def test_translate_event_ignores_chat_model_stream():
         "data": {"chunk": _Chunk()},
     }
     assert _translate_event(event, "t1") is None
+
+
+@pytest.mark.asyncio
+async def test_run_and_stream_sends_immediate_ack(monkeypatch):
+    from app.api import websocket as ws_module
+
+    events = []
+
+    async def fake_broadcast(data):
+        events.append(data)
+
+    async def fake_astream(*a, **k):
+        if False:
+            yield {}
+        return
+
+    monkeypatch.setattr(ws_module, "broadcast_event", fake_broadcast)
+
+    class _Graph:
+        def astream_events(self, *a, **k):
+            return fake_astream()
+
+    monkeypatch.setattr(ws_module, "build_nexus_graph", lambda cp: _Graph(), raising=False)
+
+    async def fake_cp():
+        return None
+    monkeypatch.setattr(ws_module, "get_checkpointer", fake_cp, raising=False)
+
+    await ws_module._run_and_stream("create a books site", "t-ack", "claude")
+
+    assert events, "no events emitted"
+    first = events[0]
+    assert first["type"] == "assistant"
+    assert first["agent"] == "ceo"
+    text = first["message"]["content"][0]["text"]
+    assert "planning" in text.lower()
