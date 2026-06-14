@@ -15,6 +15,7 @@ import pytz
 from croniter import croniter
 
 from app import config
+from app.services import standup
 
 logger = logging.getLogger(__name__)
 
@@ -79,33 +80,81 @@ def get_routine_logs(routine_id: str, limit: int = 10) -> list[dict]:
         return []
 
 
+def _seed_default_routines(routines_path: Path) -> None:
+    """Ensure the morning_standup routine exists in the routines file.
+
+    Creates the file if it doesn't exist.  Never overwrites existing entries
+    and never changes enabled=True routines.
+    """
+    routines: list[dict] = []
+    if routines_path.exists():
+        try:
+            routines = json.loads(routines_path.read_text(encoding="utf-8"))
+        except Exception as exc:
+            logger.warning("_seed_default_routines: could not read %s: %s", routines_path, exc)
+            routines = []
+
+    existing_ids = {r.get("id") for r in routines}
+    if "morning_standup" in existing_ids:
+        return  # already present — nothing to do
+
+    routines.append({
+        "id":          "morning_standup",
+        "name":        "Morning Standup",
+        "description": "Morning standup briefing — enable to run at 9am on weekdays",
+        "schedule":    "0 9 * * 1-5",
+        "timezone":    "UTC",
+        "enabled":     False,
+        "agent":       "ceo",
+        "prompt":      "",          # run_morning_standup() builds its own prompt
+        "run_count":   0,
+        "last_run":    None,
+        "last_status": None,
+    })
+
+    try:
+        routines_path.parent.mkdir(parents=True, exist_ok=True)
+        routines_path.write_text(json.dumps(routines, indent=2), encoding="utf-8")
+        logger.info("Seeded default 'morning_standup' routine into %s", routines_path)
+    except Exception as exc:
+        logger.error("_seed_default_routines: could not write %s: %s", routines_path, exc)
+
+
 # ── Routine execution ──────────────────────────────────────────────────────────
 
 async def run_routine(routine: dict) -> str:
     """Execute a routine: run the agent, store logs, broadcast completion."""
-    from app.agents.runner import run_agent
     from app.api.websocket import broadcast_event
 
-    routine_id    = routine["id"]
-    output_acc: list[str] = []
-
-    async def _collect(data: dict) -> None:
-        if data.get("type") == "assistant":
-            for blk in data.get("message", {}).get("content", []):
-                if blk.get("type") == "text" and blk["text"]:
-                    output_acc.append(blk["text"])
+    routine_id = routine["id"]
 
     logger.info("Running routine '%s'", routine_id)
     try:
-        await run_agent(routine["agent"], routine["prompt"], _collect, model="claude")
-        output = "".join(output_acc)
-        status = "success"
+        # morning_standup has its own dedicated service that builds the prompt
+        # and handles email/broadcast internally.
+        if routine_id == "morning_standup":
+            output = await standup.run_morning_standup()
+        else:
+            from app.agents.runner import run_agent
 
-        # Parse and send any generated emails (background routines fail-safe)
-        from app.output.handlers.email import parse_emails
-        from app.services import email as email_svc
-        for target, subj, body in parse_emails(output):
-            await email_svc.send_mail(f"[Shadow Garden] {subj}", body, to=target)
+            output_acc: list[str] = []
+
+            async def _collect(data: dict) -> None:
+                if data.get("type") == "assistant":
+                    for blk in data.get("message", {}).get("content", []):
+                        if blk.get("type") == "text" and blk["text"]:
+                            output_acc.append(blk["text"])
+
+            await run_agent(routine["agent"], routine["prompt"], _collect, model="claude")
+            output = "".join(output_acc)
+
+            # Parse and send any generated emails (background routines fail-safe)
+            from app.output.handlers.email import parse_emails
+            from app.services import email as email_svc
+            for target, subj, body in parse_emails(output):
+                await email_svc.send_mail(f"[Shadow Garden] {subj}", body, to=target)
+
+        status = "success"
 
     except Exception as exc:
         output = f"[Error: {exc}]"
@@ -130,6 +179,7 @@ async def run_routine(routine: dict) -> str:
 async def start_scheduler_loop() -> None:
     """Check routines every 30 s; fire each at most once per scheduled minute."""
     logger.info("Subaru Scheduler started.")
+    _seed_default_routines(ROUTINES_FILE)
     fired: dict[str, str] = {}   # fire_key → fired_at (ISO)
 
     while True:
