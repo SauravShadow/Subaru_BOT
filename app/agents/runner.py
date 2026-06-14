@@ -391,6 +391,12 @@ async def run_claude_agent(
                 for blk in obj.get("message", {}).get("content", []):
                     if blk.get("type") == "text":
                         full_resp += blk["text"]
+                        if agent_id == "ceo" and blk["text"]:
+                            await send({
+                                "type": "ceo_stream",
+                                "agent": "ceo",
+                                "delta": blk["text"],
+                            })
         except json.JSONDecodeError:
             non_json_stdout.append(line)
 

@@ -24,6 +24,7 @@ export interface AgentState {
   stepCount: number
   recentSteps: Step[]
   checkpoints: Checkpoint[]
+  streamPreview?: string
 }
 
 export interface EdgeState {

@@ -11,6 +11,7 @@ function defaultAgent(id: string, name = id, role = ''): AgentState {
     stepCount: 0,
     recentSteps: [],
     checkpoints: [],
+    streamPreview: '',
   }
 }
 
@@ -182,6 +183,23 @@ export const useNexusStore = create<NexusStore>((set) => ({
           break
         }
 
+        case 'queued': {
+          addNotif(
+            `Task queued (#${event.position ?? '?'}): ${String(event.task ?? '').slice(0, 60)}`,
+            'system',
+          )
+          break
+        }
+
+        case 'ceo_stream': {
+          const prev = agents['ceo'] ?? defaultAgent('ceo')
+          updateAgent('ceo', {
+            status: 'thinking',
+            streamPreview: `${prev.streamPreview ?? ''}${event.delta ?? ''}`,
+          })
+          break
+        }
+
         case 'assistant': {
           if (!agentId) break
           const raw = (event.message as { content?: unknown })?.content
@@ -198,6 +216,7 @@ export const useNexusStore = create<NexusStore>((set) => ({
               .join('')
           }
           if (!content.trim()) break
+          if (agentId === 'ceo') updateAgent('ceo', { streamPreview: '' })
           const prev3 = agents[agentId] ?? defaultAgent(agentId)
           updateAgent(agentId, {
             recentOutput: [...prev3.recentOutput, content].slice(-500)
