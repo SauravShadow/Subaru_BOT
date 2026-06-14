@@ -26,6 +26,8 @@ def _parse_sing_args(args: str) -> tuple[str, str]:
 
 async def handle(args: str, agent_id: str, send: Sender) -> tuple[str, bool]:
     lyrics, style = _parse_sing_args(args)
+    if agent_id != "ceo":
+        return lyrics, False
     audio = await bark_client.sing(lyrics, style)
     if audio:
         await send({"type": "audio", "mode": "sing", "data": audio})
