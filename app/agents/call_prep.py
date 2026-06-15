@@ -47,28 +47,87 @@ Rules:
 """
 
 
-async def generate_script(goal: str, language: str = "en") -> dict:
-    """Call LLM to generate a call script. Returns dict with opening/script/closing."""
-    prompt = generate_script_prompt(goal, language)
+async def _claude_cli_generate(prompt: str) -> str:
+    """One-shot generation via the Claude CLI (CLAUDE_BIN) — the project's keyless
+    Claude access path (uses the user's subscription, no ANTHROPIC_API_KEY needed).
+    Returns the raw stdout text, or "" on any failure."""
+    claude_bin = config.CLAUDE_BIN
+    if not claude_bin:
+        return ""
+    if claude_bin == "claude":  # default — only usable if actually on PATH
+        import shutil
+        if not shutil.which("claude"):
+            return ""
     try:
-        import anthropic
-        client = anthropic.AsyncAnthropic()
-        msg = await client.messages.create(
-            model=config.DEFAULT_MODEL,
-            max_tokens=1024,
-            messages=[{"role": "user", "content": prompt}],
+        proc = await asyncio.create_subprocess_exec(
+            claude_bin, "-p", prompt, "--model", config.DEFAULT_MODEL,
+            stdout=asyncio.subprocess.PIPE,
+            stderr=asyncio.subprocess.PIPE,
+            cwd=str(config.WORK_DIR),
+            env={**os.environ},
+            limit=16 * 1024 * 1024,
         )
-        raw = msg.content[0].text.strip()
-        raw = re.sub(r"^```(?:json)?\s*", "", raw)
-        raw = re.sub(r"\s*```$", "", raw)
-        return json.loads(raw)
+        out, _err = await asyncio.wait_for(proc.communicate(), timeout=60.0)
+        return (out.decode(errors="replace") or "").strip()
     except Exception as exc:
-        logger.error("Script generation failed: %s", exc)
-        return {
-            "opening": f"Hello, I'm calling regarding: {goal}",
-            "script": [],
-            "closing": "Thank you for your time. Goodbye.",
-        }
+        logger.warning("Claude CLI script generation failed: %s", exc)
+        return ""
+
+
+async def generate_script(goal: str, language: str = "en") -> dict:
+    """Call an LLM to generate a call script. Returns dict with opening/script/closing.
+
+    This deployment authenticates Claude via the CLI (CLAUDE_BIN), not the anthropic
+    SDK, so there is no ANTHROPIC_API_KEY. Generator priority:
+      1. Claude CLI (keyless, the project's canonical Claude access)
+      2. Gemini (configured GEMINI_API_KEY)
+      3. anthropic SDK (deployments that do set an API key)
+      4. minimal default script
+    """
+    prompt = generate_script_prompt(goal, language)
+    raw = await _claude_cli_generate(prompt)
+
+    # Secondary: Gemini (matches the configured GEMINI_API_KEY)
+    if not raw and config.GEMINI_API_KEY:
+        try:
+            import google.genai as genai
+            client = genai.Client(api_key=config.GEMINI_API_KEY)
+            resp = await asyncio.to_thread(
+                client.models.generate_content,
+                model="gemini-2.0-flash",
+                contents=prompt,
+            )
+            raw = (resp.text or "").strip()
+        except Exception as exc:
+            logger.warning("Gemini script generation failed: %s", exc)
+
+    # Secondary: anthropic SDK (only works where ANTHROPIC_API_KEY is set)
+    if not raw:
+        try:
+            import anthropic
+            client = anthropic.AsyncAnthropic()
+            msg = await client.messages.create(
+                model=config.DEFAULT_MODEL,
+                max_tokens=1024,
+                messages=[{"role": "user", "content": prompt}],
+            )
+            raw = msg.content[0].text.strip()
+        except Exception as exc:
+            logger.error("Script generation failed: %s", exc)
+
+    if raw:
+        try:
+            raw = re.sub(r"^```(?:json)?\s*", "", raw)
+            raw = re.sub(r"\s*```$", "", raw)
+            return json.loads(raw)
+        except Exception as exc:
+            logger.error("Script JSON parse failed: %s", exc)
+
+    return {
+        "opening": f"Hello, I'm calling regarding: {goal}",
+        "script": [],
+        "closing": "Thank you for your time. Goodbye.",
+    }
 
 
 async def prerender_audio(
