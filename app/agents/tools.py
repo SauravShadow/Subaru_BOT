@@ -344,7 +344,7 @@ from app.services import call_store as _call_store
 from app.services import call_store
 
 
-async def run_outbound_call(number: str, goal: str, language: str = "en") -> dict:
+async def run_outbound_call(number: str, goal: str, language: str = "en", voice: str = "") -> dict:
     """Full async orchestration: script gen → pre-render → dial. Returns session info."""
     import uuid
     from app.agents.call_prep import generate_script, prerender_audio
@@ -357,7 +357,7 @@ async def run_outbound_call(number: str, goal: str, language: str = "en") -> dic
         return {"error": "BASE_URL not configured — set public tunnel URL in .env"}
 
     call_id = str(uuid.uuid4())
-    speaker = cfg.BARK_SPEAKER
+    speaker = voice or cfg.BARK_SPEAKER
 
     sess = call_store.create_session(
         call_id=call_id, direction="outbound",

@@ -1,8 +1,9 @@
 // nexus-ui/src/components/OpsDrawer.tsx
 import { useState, useEffect, useCallback } from 'react'
 import { useNexusStore } from '../store'
+import CallPanel from './CallPanel'
 
-type OpsTab = 'routines' | 'skills' | 'approvals' | 'email' | 'team'
+type OpsTab = 'routines' | 'skills' | 'approvals' | 'email' | 'team' | 'calls'
 
 interface Routine {
   id: string
@@ -269,6 +270,7 @@ export function OpsDrawer({ open, onClose, requestedTab }: {
         <TabButton label={`APPROVALS${approvalEntries.length > 0 ? ` (${approvalEntries.length})` : ''}`} active={tab === 'approvals'} onClick={() => setTab('approvals')} />
         <TabButton label="EMAIL" active={tab === 'email'} onClick={() => setTab('email')} />
         <TabButton label="TEAM" active={tab === 'team'} onClick={() => setTab('team')} />
+        <TabButton label="📞 CALLS" active={tab === 'calls'} onClick={() => setTab('calls')} />
       </div>
 
       {/* Content */}
@@ -538,6 +540,8 @@ export function OpsDrawer({ open, onClose, requestedTab }: {
             ))}
           </div>
         )}
+
+        {tab === 'calls' && <CallPanel />}
       </div>
 
       {/* Footer refresh */}

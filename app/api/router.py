@@ -556,9 +556,12 @@ async def api_call_outbound(body: dict, background_tasks: BackgroundTasks):
     number   = body.get("number", "")
     goal     = body.get("goal", "")
     language = body.get("language", "en")
+    voice    = body.get("voice", config.BARK_SPEAKER)
     if not number or not goal:
         return JSONResponse({"error": "number and goal required"}, status_code=400)
-    result = await agent_tools.run_outbound_call(number=number, goal=goal, language=language)
+    result = await agent_tools.run_outbound_call(
+        number=number, goal=goal, language=language, voice=voice
+    )
     return result
 
 
