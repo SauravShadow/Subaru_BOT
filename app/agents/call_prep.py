@@ -47,7 +47,7 @@ Rules:
 """
 
 
-async def _claude_cli_generate(prompt: str) -> str:
+async def _claude_cli_generate(prompt: str, timeout: float = 60.0) -> str:
     """One-shot generation via the Claude CLI (CLAUDE_BIN) — the project's keyless
     Claude access path (uses the user's subscription, no ANTHROPIC_API_KEY needed).
     Returns the raw stdout text, or "" on any failure."""
@@ -67,10 +67,10 @@ async def _claude_cli_generate(prompt: str) -> str:
             env={**os.environ},
             limit=16 * 1024 * 1024,
         )
-        out, _err = await asyncio.wait_for(proc.communicate(), timeout=60.0)
+        out, _err = await asyncio.wait_for(proc.communicate(), timeout=timeout)
         return (out.decode(errors="replace") or "").strip()
     except Exception as exc:
-        logger.warning("Claude CLI script generation failed: %s", exc)
+        logger.warning("Claude CLI generation failed: %s", exc)
         return ""
 
 
@@ -185,12 +185,12 @@ _FALLBACK_REPLY = "Sorry, could you repeat that?"
 
 
 async def quick_reply(goal: str, transcript: list, language: str = "en") -> str:
-    """Sub-2s Gemini-flash reply for a live call turn. Never raises.
+    """Fast reply for a live call turn. Never raises.
 
-    `transcript` is a list of call_store.Turn (objects with .speaker/.text).
+    Tries Gemini-flash first (sub-2s); if it fails or is quota-exhausted, falls back
+    to the Claude CLI (keyless, slower but real) before the canned line. `transcript`
+    is a list of call_store.Turn (objects with .speaker/.text).
     """
-    if not config.GEMINI_API_KEY:
-        return _FALLBACK_REPLY
     convo = "\n".join(
         f"{'You' if t.speaker == 'nexus' else 'Caller'}: {t.text}"
         for t in transcript[-8:]
@@ -201,21 +201,33 @@ async def quick_reply(goal: str, transcript: list, language: str = "en") -> str:
         f"no stage directions. If the goal is met or the caller is done, close politely.\n\n"
         f"Conversation so far:\n{convo}\n\nYour next spoken line:"
     )
-    try:
-        import google.genai as genai
-        client = genai.Client(api_key=config.GEMINI_API_KEY)
-        resp = await asyncio.wait_for(
-            asyncio.to_thread(
-                client.models.generate_content,
-                model="gemini-3.5-flash",
-                contents=prompt,
-            ),
-            timeout=4.0,
-        )
-        return (resp.text or "").strip() or _FALLBACK_REPLY
-    except Exception as exc:
-        logger.warning("quick_reply failed: %s", exc)
-        return _FALLBACK_REPLY
+
+    # Primary: Gemini-flash (fastest)
+    if config.GEMINI_API_KEY:
+        try:
+            import google.genai as genai
+            client = genai.Client(api_key=config.GEMINI_API_KEY)
+            resp = await asyncio.wait_for(
+                asyncio.to_thread(
+                    client.models.generate_content,
+                    model="gemini-3.5-flash",
+                    contents=prompt,
+                ),
+                timeout=4.0,
+            )
+            text = (resp.text or "").strip()
+            if text:
+                return text
+        except Exception as exc:
+            logger.warning("quick_reply Gemini failed: %s", exc)
+
+    # Fallback: Claude CLI (keyless). Slower, but kept within Twilio's webhook
+    # response window. One short sentence, so strip to the first line.
+    cli = await _claude_cli_generate(prompt, timeout=12.0)
+    if cli:
+        return cli.splitlines()[0].strip() or _FALLBACK_REPLY
+
+    return _FALLBACK_REPLY
 
 
 def cleanup_call_audio(call_id: str) -> None:
