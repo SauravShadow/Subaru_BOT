@@ -280,10 +280,15 @@ def speak_text(call_control_id: str, text: str, language: str = "en",
 
 
 def start_transcription(call_control_id: str, language: str = "en") -> None:
-    """Begin streaming STT on the remote party's audio (yields call.transcription events)."""
+    """Begin streaming STT on the remote party's audio (yields call.transcription events).
+
+    NOTE: Telnyx's start_transcription has NO `language` arg (verified against
+    telnyx 4.153.0) — language is chosen via transcription_engine_config. We keep
+    `language` in this wrapper's signature for call-site stability but forward only
+    the track selection; the default engine handles language detection.
+    """
     _get_client().calls.actions.start_transcription(
         call_control_id,
-        language=language,
         transcription_tracks=_TRANSCRIPTION_TRACKS,
     )
 
