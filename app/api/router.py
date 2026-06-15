@@ -739,6 +739,36 @@ async def api_calls_inbound_respond(request: Request, background_tasks: Backgrou
     )
 
 
+# ── Call history + search ───────────────────────────────────────────────────────
+
+@router.get("/api/calls/history")
+async def api_calls_history(
+    direction: str = "",
+    outcome: str = "",
+    number: str = "",
+    limit: int = 50,
+):
+    return call_store.get_call_history(
+        direction=direction, outcome=outcome,
+        number_prefix=number, limit=limit,
+    )
+
+
+@router.get("/api/calls/search")
+async def api_calls_search(q: str = "", limit: int = 20):
+    if not q:
+        return []
+    return call_store.search_calls(q=q, limit=limit)
+
+
+@router.get("/api/calls/{call_id}/transcript")
+async def api_call_transcript(call_id: str):
+    result = call_store.get_transcript(call_id)
+    if result is None:
+        return JSONResponse({"error": f"No call found: {call_id}"}, status_code=404)
+    return result
+
+
 # ── SPA fallback (must be last) ────────────────────────────────────────────────
 
 from fastapi.responses import FileResponse as _FileResponse
