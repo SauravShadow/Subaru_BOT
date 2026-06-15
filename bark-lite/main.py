@@ -106,12 +106,34 @@ class SpeakRequest(BaseModel):
     text: str
     emotion: str = "calm"
     agent_id: str = ""
+    voice: str = ""   # edge-tts voice name e.g. "en-US-GuyNeural"; empty = use gTTS
+
+
+async def _edge_tts_wav(text: str, voice: str) -> bytes:
+    """Generate WAV bytes via edge-tts (Microsoft neural voices)."""
+    import edge_tts
+    import io
+    from pydub import AudioSegment
+
+    communicate = edge_tts.Communicate(text, voice)
+    mp3_chunks = []
+    async for chunk in communicate.stream():
+        if chunk["type"] == "audio":
+            mp3_chunks.append(chunk["data"])
+    mp3_bytes = b"".join(mp3_chunks)
+    audio = AudioSegment.from_mp3(io.BytesIO(mp3_bytes))
+    buf = io.BytesIO()
+    audio.export(buf, format="wav")
+    return buf.getvalue()
 
 
 @app.post("/speak")
 async def speak(req: SpeakRequest):
     try:
-        wav = _speak_wav(req.text, req.emotion)
+        if req.voice:
+            wav = await _edge_tts_wav(req.text, req.voice)
+        else:
+            wav = _speak_wav(req.text, req.emotion)
     except Exception as exc:
         logger.error("speak failed: %s", exc)
         raise HTTPException(status_code=500, detail=str(exc))

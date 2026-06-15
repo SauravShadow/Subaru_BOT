@@ -7,13 +7,16 @@ logger = logging.getLogger(__name__)
 _TIMEOUT = 15.0
 
 
-async def speak(text: str, emotion: str = "calm") -> str | None:
+async def speak(text: str, emotion: str = "calm", voice: str | None = None) -> str | None:
     """POST /speak → base64 WAV string, or None if bark-svc is unavailable."""
     try:
+        payload: dict = {"text": text, "emotion": emotion}
+        if voice:
+            payload["voice"] = voice
         async with httpx.AsyncClient() as client:
             resp = await client.post(
                 f"{config.BARK_SVC_URL}/speak",
-                json={"text": text, "emotion": emotion},
+                json=payload,
                 timeout=_TIMEOUT,
             )
             resp.raise_for_status()
