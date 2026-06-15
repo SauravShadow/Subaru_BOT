@@ -29,6 +29,11 @@ services:
       - GEMINI_API_KEY=${GEMINI_API_KEY:-}
       - BARK_SVC_URL=http://bark-svc:9001
       - BROWSER_SVC_URL=http://browser-svc:9002
+      - TWILIO_ACCOUNT_SID=${TWILIO_ACCOUNT_SID:-}
+      - TWILIO_AUTH_TOKEN=${TWILIO_AUTH_TOKEN:-}
+      - TWILIO_PHONE_NUMBER=${TWILIO_PHONE_NUMBER:-}
+      - BASE_URL=${BASE_URL:-}
+      - BARK_SPEAKER=${BARK_SPEAKER:-en-US-GuyNeural}
       # Optional: configure SMTP for CEO-to-user email
       # - SMTP_USER=your@gmail.com
       # - SMTP_PASS=your_app_password

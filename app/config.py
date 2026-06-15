@@ -59,6 +59,15 @@ SKILLS_DIR     = Path("/app/skills")
 # Bark TTS sidecar
 BARK_SVC_URL = os.environ.get("BARK_SVC_URL", "http://bark-svc:9001")
 
+# Twilio telephony
+TWILIO_ACCOUNT_SID  = os.environ.get("TWILIO_ACCOUNT_SID",  "")
+TWILIO_AUTH_TOKEN   = os.environ.get("TWILIO_AUTH_TOKEN",   "")
+TWILIO_PHONE_NUMBER = os.environ.get("TWILIO_PHONE_NUMBER", "")
+BASE_URL            = os.environ.get("BASE_URL", "")  # public Cloudflare tunnel URL e.g. https://nexus.example.com
+
+# Voice
+BARK_SPEAKER = os.environ.get("BARK_SPEAKER", "en-US-GuyNeural")  # edge-tts voice name
+
 # Browser automation sidecar
 BROWSER_SVC_URL = os.environ.get("BROWSER_SVC_URL", "http://browser-svc:9002")
 
