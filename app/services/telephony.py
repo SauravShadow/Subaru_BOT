@@ -65,6 +65,33 @@ def play_audio(call_control_id: str, audio_url: str, call_id: str = "") -> None:
     )
 
 
+# Telnyx `speak` requires a full locale (e.g. en-US), not a short code (en).
+# Map the short codes our sessions use onto Telnyx-supported locales.
+_TELNYX_LANG = {
+    "en": "en-US", "hi": "hi-IN", "es": "es-ES", "fr": "fr-FR", "de": "de-DE",
+    "it": "it-IT", "pt": "pt-BR", "ja": "ja-JP", "ko": "ko-KR", "nl": "nl-NL",
+    "pl": "pl-PL", "ru": "ru-RU", "sv": "sv-SE", "tr": "tr-TR", "da": "da-DK",
+    "nb": "nb-NO", "ro": "ro-RO", "cy": "cy-GB", "is": "is-IS", "ar": "arb",
+    "zh": "cmn-CN",
+}
+
+
+def _telnyx_language(lang: str) -> str:
+    """Normalize a language code to a Telnyx `speak`-supported locale (full, e.g. en-US)."""
+    if not lang:
+        return "en-US"
+    if "-" in lang:          # already a full locale (en-US, hi-IN, …)
+        return lang
+    return _TELNYX_LANG.get(lang.lower(), "en-US")
+
+
+def _short_lang(lang: str) -> str:
+    """Short language code for transcription engines (e.g. en-US -> en). Default 'en'."""
+    if not lang:
+        return "en"
+    return lang.split("-")[0].lower()
+
+
 def speak_text(call_control_id: str, text: str, language: str = "en",
                call_id: str = "") -> None:
     """Speak dynamic text via Telnyx TTS."""
@@ -72,7 +99,7 @@ def speak_text(call_control_id: str, text: str, language: str = "en",
         call_control_id,
         payload=text,
         voice=config.TELNYX_VOICE,
-        language=language,
+        language=_telnyx_language(language),
         client_state=encode_client_state(call_id),
     )
 
@@ -80,14 +107,19 @@ def speak_text(call_control_id: str, text: str, language: str = "en",
 def start_transcription(call_control_id: str, language: str = "en") -> None:
     """Begin streaming STT on the remote party's audio (yields call.transcription events).
 
-    NOTE: Telnyx's start_transcription has NO `language` arg (verified against
-    telnyx 4.153.0); language is chosen via transcription_engine_config. We keep
-    `language` in this wrapper's signature for call-site stability but forward only
-    the track selection; the default engine handles language.
+    Uses an explicit Google engine with interim_results — the default (unspecified)
+    engine was unreliable (some calls produced no transcription events at all).
+    `language` is normalized to a Telnyx/Google locale (e.g. en -> en-US).
     """
     _get_client().calls.actions.start_transcription(
         call_control_id,
         transcription_tracks=_TRANSCRIPTION_TRACKS,
+        transcription_engine="Google",
+        transcription_engine_config={
+            "transcription_engine": "Google",
+            "language": _short_lang(language),
+            "interim_results": True,
+        },
     )
 
 

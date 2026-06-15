@@ -59,7 +59,16 @@ def test_speak_text_issues_speak():
     kwargs = mock_client.calls.actions.speak.call_args[1]
     assert args[0] == "ctrl-1"
     assert kwargs["payload"] == "Hello there"
-    assert kwargs["language"] == "en"
+    # Telnyx speak requires a full locale; short "en" must be normalized to "en-US"
+    assert kwargs["language"] == "en-US"
+
+
+def test_telnyx_language_normalization():
+    assert telephony._telnyx_language("en") == "en-US"
+    assert telephony._telnyx_language("hi") == "hi-IN"
+    assert telephony._telnyx_language("") == "en-US"
+    assert telephony._telnyx_language("en-GB") == "en-GB"   # already a locale → passthrough
+    assert telephony._telnyx_language("xx") == "en-US"      # unknown → safe default
 
 
 def test_answer_and_hangup_and_transcription():

@@ -42,11 +42,11 @@ def test_audio_endpoint_404_for_missing(client):
     assert resp.status_code == 404
 
 
-def test_webhook_answered_plays_opening(client):
+def test_webhook_answered_speaks_opening(client):
     from app.services import call_store, telephony
     from app.services.call_store import ScriptEntry
     sess = call_store.create_session("wh-out", "outbound", "+1234", "goal", "en", "en-US-GuyNeural")
-    sess.script = [ScriptEntry(idx=0, question="", answer="Hello!", audio_path="/tmp/x/0.wav", used=False)]
+    sess.script = [ScriptEntry(idx=0, question="", answer="Hello!", audio_path="", used=False)]
     call_store.bind_call_control_id("ctrl-out", "wh-out")
 
     ev = MagicMock()
@@ -56,14 +56,36 @@ def test_webhook_answered_plays_opening(client):
     ev.data.payload.client_state = telephony.encode_client_state("wh-out")
 
     with patch("app.api.router.telephony.verify_webhook", return_value=ev), \
-         patch("app.api.router.telephony.play_audio") as mock_play, \
+         patch("app.api.router.telephony.speak_text") as mock_speak, \
          patch("app.api.router.telephony.start_transcription") as mock_tr:
         resp = client.post("/api/calls/webhook",
                            data=json.dumps(_event("call.answered", {})),
                            headers={"telnyx-signature-ed25519": "s", "telnyx-timestamp": "1"})
     assert resp.status_code == 200
-    assert mock_play.called
+    # opening line is spoken via Telnyx TTS (single voice), not played as a WAV
+    assert mock_speak.called
+    assert mock_speak.call_args[0][1] == "Hello!"
     assert mock_tr.called
+
+
+def test_live_endpoint_returns_session_status(client):
+    from app.services import call_store
+    sess = call_store.create_session("live-1", "outbound", "+1234", "book table", "en", "v")
+    sess.status = "connected"
+    call_store.add_turn("live-1", "nexus", "Hello!")
+    call_store.add_turn("live-1", "them", "Hi")
+    resp = client.get("/api/calls/live-1/live")
+    assert resp.status_code == 200
+    d = resp.json()
+    assert d["status"] == "connected"
+    assert len(d["transcript"]) == 2
+    assert d["transcript"][0]["text"] == "Hello!"
+
+
+def test_live_endpoint_ended_when_no_session(client):
+    resp = client.get("/api/calls/no-such-call/live")
+    assert resp.status_code == 200
+    assert resp.json()["status"] == "ended"
 
 
 def test_webhook_hangup_ends_session(client):

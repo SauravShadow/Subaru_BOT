@@ -341,9 +341,13 @@ from app.services import call_store
 
 
 async def run_outbound_call(number: str, goal: str, language: str = "en", voice: str = "") -> dict:
-    """Full async orchestration: script gen → pre-render → dial. Returns session info."""
+    """Full async orchestration: script gen → dial. Returns session info.
+
+    Lines are spoken live via Telnyx TTS (single voice), so there is no bark
+    pre-render step — this also removes the multi-second pre-dial delay.
+    """
     import uuid
-    from app.agents.call_prep import generate_script, prerender_audio
+    from app.agents.call_prep import generate_script, build_script_entries
     from app.services.telephony import dial_outbound
     from app import config as cfg
 
@@ -362,8 +366,7 @@ async def run_outbound_call(number: str, goal: str, language: str = "en", voice:
     sess.status = "prep"
 
     script_data = await generate_script(goal, language)
-    entries = await prerender_audio(script_data, call_id, speaker)
-    sess.script = entries
+    sess.script = build_script_entries(script_data)
     sess.status = "dialing"
 
     webhook_url = f"{cfg.BASE_URL}/api/calls/webhook"

@@ -130,6 +130,22 @@ async def generate_script(goal: str, language: str = "en") -> dict:
     }
 
 
+def build_script_entries(script_data: dict) -> list[ScriptEntry]:
+    """Build text-only ScriptEntry list from a generated script (no audio pre-render).
+
+    Lines are spoken live via Telnyx TTS during the call, so we keep only the text
+    (audio_path empty). idx 0 = opening, last = closing, middle = anticipated Q&A.
+    """
+    lines: list[tuple[str, str]] = [("", script_data.get("opening", ""))]
+    for item in script_data.get("script", []):
+        lines.append((item.get("question", ""), item.get("answer", "")))
+    lines.append(("", script_data.get("closing", "")))
+    return [
+        ScriptEntry(idx=i, question=q, answer=a, audio_path="")
+        for i, (q, a) in enumerate(lines)
+    ]
+
+
 async def prerender_audio(
     script_data: dict,
     call_id: str,

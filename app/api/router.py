@@ -614,76 +614,82 @@ async def api_calls_webhook(request: Request, background_tasks: BackgroundTasks)
     # Resolve our internal call_id: client_state → ccid map → (inbound) ccid itself
     call_id = state_id or call_store.resolve_call_id(ccid) or (ccid if is_inbound else "")
 
-    if etype == "call.initiated":
-        if is_inbound:
-            caller = getattr(payload, "from_", "") or "unknown"
-            call_store.create_session(
-                call_id=ccid, direction="inbound", number=caller,
-                goal="inbound call", language="en", speaker=config.BARK_SPEAKER,
-            )
-            call_store.bind_call_control_id(ccid, ccid)
-            telephony.answer_call(ccid, call_id=ccid)
-        return Response(status_code=200)
-
-    if etype == "call.answered":
-        sess = call_store.get_session(call_id)
-        if sess and sess.direction == "outbound" and sess.script:
-            entry = sess.script[0]
-            entry.used = True
-            sess.status = "connected"
-            call_store.add_turn(call_id, "nexus", entry.answer)
-            telephony.play_audio(ccid, _audio_url(call_id, 0), call_id=call_id)
-        elif sess:  # inbound
-            greeting = "Hi, this is NEXUS, your AI assistant. How can I help you today?"
-            call_store.add_turn(call_id, "nexus", greeting)
-            telephony.speak_text(ccid, greeting, language=sess.language, call_id=call_id)
-        telephony.start_transcription(ccid, language=(sess.language if sess else "en"))
-        return Response(status_code=200)
-
-    if etype == "call.transcription":
-        td = getattr(payload, "transcription_data", None)
-        if not td or not getattr(td, "is_final", False):
-            return Response(status_code=200)
-        speech = (getattr(td, "transcript", "") or "").strip()
-        sess = call_store.get_session(call_id)
-        if not speech or not sess:
-            return Response(status_code=200)
-        call_store.add_turn(call_id, "them", speech)
-
-        if any(w in speech.lower() for w in _GOODBYE_WORDS):
-            if sess.direction == "outbound":
-                closing = next((e for e in sess.script if e.idx == len(sess.script) - 1), None)
-                closing_text = closing.answer if closing else "Thank you. Goodbye!"
-            else:
-                closing_text = "Thank you for calling. Have a great day! Goodbye."
-            call_store.add_turn(call_id, "nexus", closing_text)
-            telephony.speak_text(ccid, closing_text, language=sess.language, call_id=call_id)
-            telephony.hangup_call(ccid)
-            background_tasks.add_task(
-                call_store.end_session, call_id, "success",
-                f"Call completed. Last exchange: {speech[:80]}")
-            background_tasks.add_task(cleanup_call_audio, call_id)
+    # Issuing Call Control commands can fail (e.g. a transient Telnyx error). Never
+    # let that bubble to a 500 — Telnyx retries non-2xx webhooks, which re-triggers
+    # the whole handler (e.g. re-playing the opening). Always ack with 200.
+    try:
+        if etype == "call.initiated":
+            if is_inbound:
+                caller = getattr(payload, "from_", "") or "unknown"
+                call_store.create_session(
+                    call_id=ccid, direction="inbound", number=caller,
+                    goal="inbound call", language="en", speaker=config.BARK_SPEAKER,
+                )
+                call_store.bind_call_control_id(ccid, ccid)
+                telephony.answer_call(ccid, call_id=ccid)
             return Response(status_code=200)
 
-        if sess.direction == "outbound":
-            matched = match_utterance(speech, sess.script)
-            if matched and matched.audio_path and Path(matched.audio_path).exists():
-                matched.used = True
-                call_store.add_turn(call_id, "nexus", matched.answer)
-                telephony.play_audio(ccid, _audio_url(call_id, matched.idx), call_id=call_id)
+        if etype == "call.answered":
+            sess = call_store.get_session(call_id)
+            if sess and sess.direction == "outbound" and sess.script:
+                entry = sess.script[0]
+                entry.used = True
+                sess.status = "connected"
+                call_store.add_turn(call_id, "nexus", entry.answer)
+                telephony.speak_text(ccid, entry.answer, language=sess.language, call_id=call_id)
+            elif sess:  # inbound
+                greeting = "Hi, this is NEXUS, your AI assistant. How can I help you today?"
+                call_store.add_turn(call_id, "nexus", greeting)
+                telephony.speak_text(ccid, greeting, language=sess.language, call_id=call_id)
+            telephony.start_transcription(ccid, language=(sess.language if sess else "en"))
+            return Response(status_code=200)
+
+        if etype == "call.transcription":
+            td = getattr(payload, "transcription_data", None)
+            if not td or not getattr(td, "is_final", False):
+                return Response(status_code=200)
+            speech = (getattr(td, "transcript", "") or "").strip()
+            sess = call_store.get_session(call_id)
+            if not speech or not sess:
+                return Response(status_code=200)
+            call_store.add_turn(call_id, "them", speech)
+
+            if any(w in speech.lower() for w in _GOODBYE_WORDS):
+                if sess.direction == "outbound":
+                    closing = next((e for e in sess.script if e.idx == len(sess.script) - 1), None)
+                    closing_text = closing.answer if closing else "Thank you. Goodbye!"
+                else:
+                    closing_text = "Thank you for calling. Have a great day! Goodbye."
+                call_store.add_turn(call_id, "nexus", closing_text)
+                telephony.speak_text(ccid, closing_text, language=sess.language, call_id=call_id)
+                telephony.hangup_call(ccid)
+                background_tasks.add_task(
+                    call_store.end_session, call_id, "success",
+                    f"Call completed. Last exchange: {speech[:80]}")
+                background_tasks.add_task(cleanup_call_audio, call_id)
                 return Response(status_code=200)
 
-        reply = await _inbound_agent_reply(call_id, speech)
-        call_store.add_turn(call_id, "nexus", reply)
-        telephony.speak_text(ccid, reply, language=sess.language, call_id=call_id)
-        return Response(status_code=200)
+            if sess.direction == "outbound":
+                matched = match_utterance(speech, sess.script)
+                if matched:
+                    matched.used = True
+                    call_store.add_turn(call_id, "nexus", matched.answer)
+                    telephony.speak_text(ccid, matched.answer, language=sess.language, call_id=call_id)
+                    return Response(status_code=200)
 
-    if etype == "call.hangup":
-        if call_id and call_store.get_session(call_id):
-            background_tasks.add_task(
-                call_store.end_session, call_id, "success", "Call ended.")
-            background_tasks.add_task(cleanup_call_audio, call_id)
-        return Response(status_code=200)
+            reply = await _inbound_agent_reply(call_id, speech)
+            call_store.add_turn(call_id, "nexus", reply)
+            telephony.speak_text(ccid, reply, language=sess.language, call_id=call_id)
+            return Response(status_code=200)
+
+        if etype == "call.hangup":
+            if call_id and call_store.get_session(call_id):
+                background_tasks.add_task(
+                    call_store.end_session, call_id, "success", "Call ended.")
+                background_tasks.add_task(cleanup_call_audio, call_id)
+            return Response(status_code=200)
+    except Exception:
+        logger.exception("Error handling Telnyx event %s (ccid=%s)", etype, str(ccid)[:18])
 
     return Response(status_code=200)
 
@@ -708,6 +714,29 @@ async def api_calls_search(q: str = "", limit: int = 20):
     if not q:
         return []
     return call_store.search_calls(q=q, limit=limit)
+
+
+@router.get("/api/calls/{call_id}/live")
+async def api_call_live(call_id: str):
+    """Live status + transcript for an in-progress call (in-memory session).
+
+    The dashboard polls this while a call is active. Once the call ends the
+    session is gone, so we report status 'ended' and the UI falls back to history.
+    """
+    sess = call_store.get_session(call_id)
+    if not sess:
+        return {"call_id": call_id, "status": "ended", "transcript": []}
+    return {
+        "call_id":   sess.call_id,
+        "status":    sess.status,
+        "number":    sess.number,
+        "goal":      sess.goal,
+        "direction": sess.direction,
+        "transcript": [
+            {"speaker": t.speaker, "text": t.text, "timestamp": t.timestamp}
+            for t in sess.transcript
+        ],
+    }
 
 
 @router.get("/api/calls/{call_id}/transcript")
