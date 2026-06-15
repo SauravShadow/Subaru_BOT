@@ -25,14 +25,6 @@ interface ActiveCallState {
   summary?: string
 }
 
-const VOICE_OPTIONS = [
-  { value: 'en-US-GuyNeural', label: 'Guy (US Male)' },
-  { value: 'en-US-JennyNeural', label: 'Jenny (US Female)' },
-  { value: 'en-GB-RyanNeural', label: 'Ryan (UK Male)' },
-  { value: 'en-IN-PrabhatNeural', label: 'Prabhat (IN Male)' },
-  { value: 'hi-IN-MadhurNeural', label: 'Madhur (Hindi Male)' },
-]
-
 const LANGUAGE_OPTIONS = [
   { value: 'en', label: 'English' },
   { value: 'hi', label: 'Hindi' },
@@ -60,7 +52,6 @@ export default function CallPanel() {
   const [number, setNumber] = useState('')
   const [goal, setGoal] = useState('')
   const [language, setLanguage] = useState('en')
-  const [voice, setVoice] = useState('en-US-GuyNeural')
   const [calling, setCalling] = useState(false)
   const [activeCall, setActiveCall] = useState<ActiveCallState | null>(null)
   const [history, setHistory] = useState<CallHistory[]>([])
@@ -78,6 +69,24 @@ export default function CallPanel() {
   useEffect(() => {
     transcriptEndRef.current?.scrollIntoView({ behavior: 'smooth' })
   }, [activeCall?.transcript])
+
+  // Live-poll the active call so status (dialing → connected → ended) and the
+  // conversation transcript stream in real time.
+  useEffect(() => {
+    const id = activeCall?.call_id
+    if (!id || activeCall?.status === 'ended') return
+    const timer = setInterval(async () => {
+      try {
+        const r = await fetch(`/api/calls/${id}/live`)
+        const d = await r.json()
+        setActiveCall(prev => (prev && prev.call_id === id)
+          ? { ...prev, status: d.status, transcript: (d.transcript?.length ? d.transcript : prev.transcript) }
+          : prev)
+        if (d.status === 'ended') fetchHistory()
+      } catch { /* transient network error — keep polling */ }
+    }, 1500)
+    return () => clearInterval(timer)
+  }, [activeCall?.call_id, activeCall?.status])
 
   const fetchHistory = async (q?: string) => {
     try {
@@ -102,7 +111,7 @@ export default function CallPanel() {
       const resp = await fetch('/api/calls/outbound', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ number, goal, language, voice }),
+        body: JSON.stringify({ number, goal, language }),
       })
       const data = await resp.json()
       if (data.error) {
@@ -156,10 +165,6 @@ export default function CallPanel() {
           <select value={language} onChange={e => setLanguage(e.target.value)}
             style={{ flex: 1, padding: '6px 10px', background: '#0f172a', border: '1px solid #475569', borderRadius: 6, color: '#e2e8f0', fontSize: 13 }}>
             {LANGUAGE_OPTIONS.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
-          </select>
-          <select value={voice} onChange={e => setVoice(e.target.value)}
-            style={{ flex: 1, padding: '6px 10px', background: '#0f172a', border: '1px solid #475569', borderRadius: 6, color: '#e2e8f0', fontSize: 13 }}>
-            {VOICE_OPTIONS.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
           </select>
         </div>
         <button
