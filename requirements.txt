@@ -17,3 +17,4 @@ langchain-google-genai>=2.0.0
 langchain-core>=0.3.0
 twilio>=9.0.0
 edge-tts>=7.0.0
+python-multipart>=0.0.9

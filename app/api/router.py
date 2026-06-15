@@ -2,10 +2,12 @@
 All REST API routes for Shadow Garden.
 """
 import asyncio
+import logging
 from datetime import datetime
+from pathlib import Path
 
-from fastapi import APIRouter, Request
-from fastapi.responses import JSONResponse
+from fastapi import APIRouter, Request, BackgroundTasks
+from fastapi.responses import JSONResponse, Response, FileResponse
 
 from app import config
 from app.agents import definitions as defs
@@ -17,6 +19,14 @@ from app.services.scheduler import (
 )
 from app.services.browser import navigate, take_screenshot, extract_text, click_element
 from app.services.self_heal import load_approvals, apply_approval, deny_approval
+from app.agents import tools as agent_tools
+from app.services.telephony import (
+    build_play_and_gather, build_say_and_gather, build_hangup, validate_twilio_request
+)
+from app.services import call_store
+from app.agents.call_prep import match_utterance, cleanup_call_audio, quick_reply, _AUDIO_DIR
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter()
 
@@ -537,6 +547,105 @@ async def api_health():
         "browser": browser_ok,
         "email":   all([config.SMTP_USER, config.SMTP_PASS, config.USER_EMAIL]),
     }
+
+
+# ── Outbound call — user-initiated ─────────────────────────────────────────────
+
+@router.post("/api/calls/outbound")
+async def api_call_outbound(body: dict, background_tasks: BackgroundTasks):
+    number   = body.get("number", "")
+    goal     = body.get("goal", "")
+    language = body.get("language", "en")
+    if not number or not goal:
+        return JSONResponse({"error": "number and goal required"}, status_code=400)
+    result = await agent_tools.run_outbound_call(number=number, goal=goal, language=language)
+    return result
+
+
+# ── Audio serving — Twilio fetches pre-rendered WAV files ──────────────────────
+
+@router.get("/api/calls/audio/{call_id}/{idx}")
+async def api_call_audio(call_id: str, idx: int):
+    wav_path = _AUDIO_DIR / call_id / f"{idx}.wav"
+    if not wav_path.exists():
+        return JSONResponse({"error": "audio not found"}, status_code=404)
+    return FileResponse(str(wav_path), media_type="audio/wav")
+
+
+# ── Outbound gather webhook — Twilio posts STT result here ─────────────────────
+
+@router.post("/api/calls/gather")
+async def api_calls_gather(request: Request, background_tasks: BackgroundTasks):
+    form    = await request.form()
+    params  = dict(form)
+    sig     = request.headers.get("X-Twilio-Signature", "")
+    url     = str(request.url)
+    call_id = str(form.get("call_id", ""))
+    turn    = int(form.get("turn", 0))
+    speech  = str(form.get("SpeechResult", "")).strip()
+
+    if config.TWILIO_AUTH_TOKEN and not validate_twilio_request(url, params, sig):
+        return Response("Forbidden", status_code=403)
+
+    sess = call_store.get_session(call_id)
+    if not sess:
+        return Response(build_hangup("Session expired. Goodbye."), media_type="application/xml")
+
+    gather_url = f"{config.BASE_URL}/api/calls/gather?call_id={call_id}&turn={turn + 1}"
+
+    # turn=0: play opening (idx=0 in script)
+    if turn == 0 and sess.script:
+        entry = sess.script[0]
+        entry.used = True
+        sess.status = "connected"
+        call_store.add_turn(call_id, "nexus", entry.answer)
+        audio_url = f"{config.BASE_URL}/api/calls/audio/{call_id}/0"
+        return Response(
+            build_play_and_gather(audio_url=audio_url, gather_action=gather_url, language=sess.language),
+            media_type="application/xml",
+        )
+
+    # Subsequent turns: match speech to script
+    if speech:
+        call_store.add_turn(call_id, "them", speech)
+
+        # Check if it's a goodbye signal
+        goodbye_words = {"bye", "goodbye", "thank you", "that's all", "no thanks", "thanks bye"}
+        if any(w in speech.lower() for w in goodbye_words):
+            closing = next((e for e in sess.script if e.idx == len(sess.script) - 1), None)
+            closing_text = closing.answer if closing else "Thank you. Goodbye!"
+            call_store.add_turn(call_id, "nexus", closing_text)
+            background_tasks.add_task(
+                call_store.end_session, call_id, "success",
+                f"Call completed. Last exchange: {speech[:80]}"
+            )
+            background_tasks.add_task(cleanup_call_audio, call_id)
+            return Response(build_hangup(closing_text), media_type="application/xml")
+
+        matched = match_utterance(speech, sess.script)
+        if matched and matched.audio_path and Path(matched.audio_path).exists():
+            matched.used = True
+            call_store.add_turn(call_id, "nexus", matched.answer)
+            audio_url = f"{config.BASE_URL}/api/calls/audio/{call_id}/{matched.idx}"
+            return Response(
+                build_play_and_gather(audio_url=audio_url, gather_action=gather_url, language=sess.language),
+                media_type="application/xml",
+            )
+
+        # No match — Gemini-flash fast path (reconciliation: quick_reply, not a static line)
+        fallback = await quick_reply(sess.goal, sess.transcript, sess.language)
+        call_store.add_turn(call_id, "nexus", fallback)
+        return Response(
+            build_say_and_gather(text=fallback, gather_action=gather_url, language=sess.language),
+            media_type="application/xml",
+        )
+
+    # No speech detected — re-prompt once
+    prompt = "Sorry, I didn't catch that. Could you please say that again?"
+    return Response(
+        build_say_and_gather(text=prompt, gather_action=gather_url, language=sess.language),
+        media_type="application/xml",
+    )
 
 
 # ── SPA fallback (must be last) ────────────────────────────────────────────────
