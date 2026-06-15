@@ -122,6 +122,43 @@ def match_utterance(
     return best_entry if best_score >= threshold else None
 
 
+_FALLBACK_REPLY = "Sorry, could you repeat that?"
+
+
+async def quick_reply(goal: str, transcript: list, language: str = "en") -> str:
+    """Sub-2s Gemini-flash reply for a live call turn. Never raises.
+
+    `transcript` is a list of call_store.Turn (objects with .speaker/.text).
+    """
+    if not config.GEMINI_API_KEY:
+        return _FALLBACK_REPLY
+    convo = "\n".join(
+        f"{'You' if t.speaker == 'nexus' else 'Caller'}: {t.text}"
+        for t in transcript[-8:]
+    )
+    prompt = (
+        f"You are NEXUS on a live phone call. Goal: {goal}\n"
+        f"Reply in {language}. ONE short spoken sentence — no markdown, no emojis, "
+        f"no stage directions. If the goal is met or the caller is done, close politely.\n\n"
+        f"Conversation so far:\n{convo}\n\nYour next spoken line:"
+    )
+    try:
+        import google.genai as genai
+        client = genai.Client(api_key=config.GEMINI_API_KEY)
+        resp = await asyncio.wait_for(
+            asyncio.to_thread(
+                client.models.generate_content,
+                model="gemini-3.5-flash",
+                contents=prompt,
+            ),
+            timeout=4.0,
+        )
+        return (resp.text or "").strip() or _FALLBACK_REPLY
+    except Exception as exc:
+        logger.warning("quick_reply failed: %s", exc)
+        return _FALLBACK_REPLY
+
+
 def cleanup_call_audio(call_id: str) -> None:
     """Remove temp WAV files after a call ends."""
     import shutil
