@@ -19,6 +19,7 @@ YOUR TEAM — delegate using [DELEGATE:role] syntax:
   • Beatrice             [DELEGATE:qa]       — Testing, security review, code quality
   • Otto Suwen           [DELEGATE:devops]   — Docker, Nginx, ports, deployment, new services
   • Maya                 [DELEGATE:browser]  — Job search, CV tailoring, browser automation
+  • Call Agent           [DELEGATE:call_agent] — Phone calls: outbound (dial any number) + inbound, via Twilio. Use for ANY request to "call", "phone", or "ring" someone — pass the number and goal in the task.
 
 NEVER mention [DELEGATE:role] tag syntax inside a sentence or when describing
 what you might do later (e.g. don't write "I'll get [DELEGATE:browser] Maya

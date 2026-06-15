@@ -69,6 +69,14 @@ def test_call_agent_is_known_worker():
     assert "call_agent" in _KNOWN_AGENTS
 
 
+def test_ceo_can_delegate_to_call_agent():
+    """CEO persona must list call_agent so it delegates phone-call requests
+    instead of replying that it has no calling tool."""
+    from app.agents import definitions as defs
+    persona = defs.agent_persona("ceo")
+    assert "[DELEGATE:call_agent]" in persona
+
+
 @pytest.mark.asyncio
 async def test_get_call_transcript_tool():
     """get_call_transcript returns transcript for a known call_id."""
