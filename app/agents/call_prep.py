@@ -221,7 +221,7 @@ async def quick_reply(goal: str, transcript: list, language: str = "en") -> str:
         except Exception as exc:
             logger.warning("quick_reply Gemini failed: %s", exc)
 
-    # Fallback: Claude CLI (keyless). Slower, but kept within Twilio's webhook
+    # Fallback: Claude CLI (keyless). Slower, but kept within Telnyx's webhook
     # response window. One short sentence, so strip to the first line.
     cli = await _claude_cli_generate(prompt, timeout=12.0)
     if cli:

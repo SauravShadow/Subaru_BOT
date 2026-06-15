@@ -563,7 +563,7 @@ async def api_call_outbound(body: dict, background_tasks: BackgroundTasks):
     return result
 
 
-# ── Audio serving — Twilio fetches pre-rendered WAV files ──────────────────────
+# ── Audio serving — Telnyx fetches pre-rendered WAV files ──────────────────────
 
 @router.get("/api/calls/audio/{call_id}/{idx}")
 async def api_call_audio(call_id: str, idx: int):
