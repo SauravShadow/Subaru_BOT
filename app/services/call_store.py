@@ -11,6 +11,7 @@ from app import config
 logger = logging.getLogger(__name__)
 
 _active: dict[str, "CallSession"] = {}
+_ccid_to_call_id: dict[str, str] = {}
 
 
 @dataclass
@@ -41,7 +42,7 @@ class CallSession:
     transcript: list[Turn] = field(default_factory=list)
     started_at: datetime = field(default_factory=datetime.utcnow)
     status: str = "prep"   # prep | dialing | connected | ended
-    twilio_sid: Optional[str] = None
+    telnyx_call_control_id: Optional[str] = None
 
 
 def _conn(db_path=None) -> sqlite3.Connection:
@@ -99,6 +100,15 @@ def get_session(call_id: str) -> Optional[CallSession]:
     return _active.get(call_id)
 
 
+def bind_call_control_id(call_control_id: str, call_id: str) -> None:
+    """Map a Telnyx call_control_id to our internal call_id."""
+    _ccid_to_call_id[call_control_id] = call_id
+
+
+def resolve_call_id(call_control_id: str) -> Optional[str]:
+    return _ccid_to_call_id.get(call_control_id)
+
+
 def add_turn(call_id: str, speaker: str, text: str) -> None:
     sess = _active.get(call_id)
     if sess:
@@ -109,6 +119,9 @@ def end_session(call_id: str, outcome: str, summary: str) -> None:
     sess = _active.pop(call_id, None)
     if not sess:
         return
+    for ccid, cid in list(_ccid_to_call_id.items()):
+        if cid == call_id:
+            _ccid_to_call_id.pop(ccid, None)
     sess.status = "ended"
     transcript_json = json.dumps([
         {"speaker": t.speaker, "text": t.text, "timestamp": t.timestamp}
