@@ -597,14 +597,11 @@ def _audio_url(call_id: str, idx: int) -> str:
 async def api_calls_webhook(request: Request, background_tasks: BackgroundTasks):
     body = (await request.body()).decode()
 
-    if config.TELNYX_PUBLIC_KEY:
-        try:
-            event = telephony.verify_webhook(body, dict(request.headers))
-        except Exception as exc:
-            logger.warning("Telnyx webhook verification failed: %s", exc)
-            return Response("Forbidden", status_code=403)
-    else:
+    try:
         event = telephony.verify_webhook(body, dict(request.headers))
+    except Exception as exc:
+        logger.warning("Telnyx webhook verification failed: %s", exc)
+        return Response("Forbidden", status_code=403)
 
     data       = event.data
     etype      = data.event_type

@@ -97,8 +97,13 @@ def hangup_call(call_control_id: str) -> None:
 def verify_webhook(payload: str, headers: dict):
     """Verify the Telnyx Ed25519 signature and return the parsed event.
 
-    Raises if the signature is invalid. `payload` is the raw request body (str);
-    `headers` must include telnyx-signature-ed25519 and telnyx-timestamp.
+    When TELNYX_PUBLIC_KEY is configured, the signature is verified and an invalid
+    signature raises. When no public key is configured (e.g. signing not yet set up),
+    the payload is parsed WITHOUT verification so the webhook still functions.
+    `payload` is the raw request body (str); `headers` must include
+    telnyx-signature-ed25519 and telnyx-timestamp when verifying.
     """
     client = _get_client()
-    return client.webhooks.unwrap(payload, headers=headers, key=config.TELNYX_PUBLIC_KEY)
+    if config.TELNYX_PUBLIC_KEY:
+        return client.webhooks.unwrap(payload, headers=headers, key=config.TELNYX_PUBLIC_KEY)
+    return client.webhooks.unsafe_unwrap(payload)

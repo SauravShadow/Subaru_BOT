@@ -83,3 +83,16 @@ def test_verify_webhook_returns_event(monkeypatch):
     assert ev is mock_event
     kwargs = mock_client.webhooks.unwrap.call_args[1]
     assert kwargs["key"] == "pub-key"
+
+
+def test_verify_webhook_parses_unverified_without_key(monkeypatch):
+    """With no public key configured, parse via unsafe_unwrap (no verification)."""
+    monkeypatch.setattr(cfg, "TELNYX_PUBLIC_KEY", "")
+    mock_event = MagicMock()
+    mock_client = MagicMock()
+    mock_client.webhooks.unsafe_unwrap.return_value = mock_event
+    with patch("app.services.telephony._get_client", return_value=mock_client):
+        ev = telephony.verify_webhook('{"x":1}', {})
+    assert ev is mock_event
+    assert mock_client.webhooks.unsafe_unwrap.called
+    assert not mock_client.webhooks.unwrap.called
