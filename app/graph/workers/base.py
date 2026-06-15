@@ -31,6 +31,9 @@ def _make_worker_node(agent_id: str):
             await broadcast.send(thread_id, data)
 
         result = await run_agent(agent_id, state["task"], send, model)
+        # Execute any [MAKE_CALL] action tag backend-agnostically (like [DELEGATE]).
+        from app.agents.tools import handle_make_call_tags
+        result, _called = await handle_make_call_tags(result, send)
         return {
             "result": result,
             "new_artifacts": _extract_artifacts(result),

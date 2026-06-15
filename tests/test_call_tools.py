@@ -13,21 +13,54 @@ async def test_make_call_tool_returns_call_id():
     assert result["status"] == "dialing"
 
 
-def test_parse_make_call_tag():
-    """[MAKE_CALL: number | goal | language] parses into make_call tool args."""
-    from app.agents.tools import parse_tool_call
-    tool, args = parse_tool_call("[MAKE_CALL: +919876543210 | Book a table for 2 at 7pm | en]")
-    assert tool == "make_call"
-    assert args["number"] == "+919876543210"
-    assert args["goal"] == "Book a table for 2 at 7pm"
-    assert args["language"] == "en"
+@pytest.mark.asyncio
+async def test_handle_make_call_tags_fires_and_strips(monkeypatch):
+    """[MAKE_CALL: ...] in agent output is executed backend-agnostically:
+    the tag is stripped from the text and run_outbound_call is invoked."""
+    import asyncio
+    from app.agents import tools
+    called = {}
+
+    async def fake_run(number, goal, language="en", voice=""):
+        called.update(number=number, goal=goal, language=language)
+        return {"call_id": "abc-123", "status": "dialing", "twilio_sid": "CA1"}
+
+    monkeypatch.setattr(tools, "run_outbound_call", fake_run)
+    sent = []
+    async def send(d): sent.append(d)
+
+    text = "Sure, dialing now. [MAKE_CALL: +919876543210 | Book a table for 2 at 7pm | en]"
+    cleaned, fired = await tools.handle_make_call_tags(text, send)
+
+    assert fired is True
+    assert "[MAKE_CALL" not in cleaned
+    await asyncio.sleep(0.05)  # let the background task run
+    assert called == {"number": "+919876543210", "goal": "Book a table for 2 at 7pm", "language": "en"}
 
 
-def test_parse_make_call_tag_defaults_language():
-    from app.agents.tools import parse_tool_call
-    tool, args = parse_tool_call("[MAKE_CALL: +14155550100 | Ask about store hours]")
-    assert tool == "make_call"
-    assert args["language"] == "en"
+@pytest.mark.asyncio
+async def test_handle_make_call_tags_no_tag_is_noop():
+    from app.agents import tools
+    async def send(d): pass
+    text = "What number should I call and what's the goal?"
+    cleaned, fired = await tools.handle_make_call_tags(text, send)
+    assert fired is False
+    assert cleaned == text
+
+
+@pytest.mark.asyncio
+async def test_handle_make_call_tags_empty_number_does_not_fire(monkeypatch):
+    """An empty number means the agent is still gathering info — don't dial."""
+    from app.agents import tools
+    fired_flag = {"v": False}
+    async def fake_run(*a, **k):
+        fired_flag["v"] = True
+        return {}
+    monkeypatch.setattr(tools, "run_outbound_call", fake_run)
+    async def send(d): pass
+    cleaned, fired = await tools.handle_make_call_tags("[MAKE_CALL:  | some goal | en]", send)
+    assert fired is False
+    assert fired_flag["v"] is False
 
 
 def test_call_agent_is_known_worker():

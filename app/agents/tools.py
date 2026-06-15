@@ -304,14 +304,10 @@ def parse_tool_call(text: str) -> Tuple[Optional[str], Optional[dict]]:
     if m:
         return "browser_profile_match", {}
 
-    m = re.search(r'\[MAKE_CALL:\s*([^\]]+)\]', text)
-    if m:
-        parts = [p.strip() for p in m.group(1).split("|")]
-        return "make_call", {
-            "number":   parts[0] if len(parts) > 0 else "",
-            "goal":     parts[1] if len(parts) > 1 else "",
-            "language": parts[2] if len(parts) > 2 else "en",
-        }
+    # NOTE: [MAKE_CALL] is intentionally NOT handled here. It is executed
+    # backend-agnostically post-response via handle_make_call_tags() (like
+    # [DELEGATE]), so it works under Claude CLI / Gemini, not just the tgpt loop.
+    # Keeping it out of the tgpt path also avoids double-dialing.
 
     m = re.search(r'\[DONE:\s*(.*?)\]', text, re.DOTALL)
     if m:
@@ -393,3 +389,52 @@ async def get_call_transcript(call_id: str) -> dict:
 async def list_calls(limit: int = 20) -> list:
     """Agent tool: list recent call history."""
     return call_store.get_call_history(limit=limit)
+
+
+_MAKE_CALL_RE = re.compile(r'\[MAKE_CALL:\s*([^\]]+)\]')
+
+
+async def handle_make_call_tags(text: str, send) -> Tuple[str, bool]:
+    """Execute a [MAKE_CALL: number | goal | language] tag from agent output.
+
+    Backend-agnostic — like the CEO's [DELEGATE] tag, this is parsed from the
+    final response text AFTER the turn, so it works no matter which backend
+    (Claude CLI / Gemini / tgpt) produced the text. The actual dial runs in the
+    background (script-gen + pre-render + dial take ~15-30s); the user gets an
+    immediate ack and a follow-up result via `send`.
+
+    Returns (text_with_tag_removed, fired). Does NOT fire when the number is
+    empty (the agent is still gathering details — let it ask normally).
+    """
+    m = _MAKE_CALL_RE.search(text or "")
+    if not m:
+        return text, False
+    parts    = [p.strip() for p in m.group(1).split("|")]
+    number   = parts[0] if len(parts) > 0 else ""
+    goal     = parts[1] if len(parts) > 1 else ""
+    language = parts[2] if len(parts) > 2 else "en"
+    if not number:
+        return text, False
+
+    cleaned = _MAKE_CALL_RE.sub("", text).strip()
+
+    def _msg(t: str) -> dict:
+        return {"type": "assistant", "agent": "call_agent",
+                "message": {"content": [{"type": "text", "text": t}]}}
+
+    async def _dial() -> None:
+        try:
+            await send(_msg(f"📞 Placing call to {number}…"))
+            res = await run_outbound_call(number=number, goal=goal, language=language)
+            if res.get("error"):
+                await send(_msg(f"❌ Call failed: {res['error']}"))
+            else:
+                await send(_msg(
+                    f"✅ Call to {number} started "
+                    f"(id {str(res.get('call_id',''))[:8]}, status {res.get('status')})."
+                ))
+        except Exception as exc:
+            await send(_msg(f"❌ Call error: {exc}"))
+
+    asyncio.create_task(_dial())
+    return cleaned, True

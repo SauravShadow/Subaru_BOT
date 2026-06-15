@@ -234,7 +234,11 @@ async def _run_direct(agent_id: str, task: str, model: str) -> None:
     try:
         result = await runner.run_agent(agent_id, task, broadcast_event, model)
         if result and result.strip():
-            await _output_pipeline.process(result, agent_id, broadcast_event)
+            # Execute any [MAKE_CALL] action tag backend-agnostically (like [DELEGATE]).
+            from app.agents.tools import handle_make_call_tags
+            result, _called = await handle_make_call_tags(result, broadcast_event)
+            if result.strip():
+                await _output_pipeline.process(result, agent_id, broadcast_event)
     except asyncio.CancelledError:
         raise
     except Exception as exc:
