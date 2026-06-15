@@ -817,6 +817,7 @@ async def _execute_tool(
         "browser_discover":      "🔍",
         "browser_company":       "🏢",
         "browser_profile_match": "👤",
+        "make_call":     "📞",
     }
     label_map = {
         "bash":          "Executing Bash",
@@ -845,6 +846,7 @@ async def _execute_tool(
         "browser_discover":      "Discovering Jobs",
         "browser_company":       "Searching Company Careers",
         "browser_profile_match": "Profile-Matched Job Search",
+        "make_call":     "Making Call",
     }
 
     path  = tool_args.get("path", tool_args.get("cmd", tool_args.get("target", tool_args.get("url", ""))))
@@ -1061,6 +1063,14 @@ async def _execute_tool(
         elif tool_type == "jira_comment":
             from app.services import jira as jira_svc
             result = jira_svc.add_comment(tool_args["ticket_id"], tool_args["body"])
+
+        elif tool_type == "make_call":
+            from app.agents.tools import run_outbound_call
+            result = str(await run_outbound_call(
+                tool_args.get("number", ""),
+                tool_args.get("goal", ""),
+                tool_args.get("language", "en"),
+            ))
 
         elif tool_type in ("browser_apply", "browser_discover",
                            "browser_company", "browser_profile_match"):

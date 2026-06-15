@@ -1,7 +1,7 @@
 import { create } from 'zustand'
 import type { AgentState, EdgeState, Step, Checkpoint, WorkQueueItem, Notification, WsModel, BrowserView } from './types'
 
-const WORKER_IDS = ['backend', 'frontend', 'qa', 'devops', 'browser']
+const WORKER_IDS = ['backend', 'frontend', 'qa', 'devops', 'browser', 'call_agent']
 
 function defaultAgent(id: string, name = id, role = ''): AgentState {
   return {

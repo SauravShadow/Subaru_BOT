@@ -304,6 +304,15 @@ def parse_tool_call(text: str) -> Tuple[Optional[str], Optional[dict]]:
     if m:
         return "browser_profile_match", {}
 
+    m = re.search(r'\[MAKE_CALL:\s*([^\]]+)\]', text)
+    if m:
+        parts = [p.strip() for p in m.group(1).split("|")]
+        return "make_call", {
+            "number":   parts[0] if len(parts) > 0 else "",
+            "goal":     parts[1] if len(parts) > 1 else "",
+            "language": parts[2] if len(parts) > 2 else "en",
+        }
+
     m = re.search(r'\[DONE:\s*(.*?)\]', text, re.DOTALL)
     if m:
         return "done", {"summary": m.group(1).strip()}
@@ -327,3 +336,60 @@ def summarize_output(text: str, max_lines: int = 15, max_chars: int = 800) -> st
         f"{truncated}\n\n"
         f"... [TRUNCATED: {hidden_l} lines, {hidden_c} chars hidden]"
     )
+
+
+# ── Telephony tools ────────────────────────────────────────────────────────────
+
+from app.services import call_store as _call_store
+from app.services import call_store
+
+
+async def run_outbound_call(number: str, goal: str, language: str = "en") -> dict:
+    """Full async orchestration: script gen → pre-render → dial. Returns session info."""
+    import uuid
+    from app.agents.call_prep import generate_script, prerender_audio
+    from app.services.telephony import dial_outbound
+    from app import config as cfg
+
+    if not cfg.TWILIO_ACCOUNT_SID:
+        return {"error": "Twilio not configured — set TWILIO_ACCOUNT_SID in .env"}
+    if not cfg.BASE_URL:
+        return {"error": "BASE_URL not configured — set public tunnel URL in .env"}
+
+    call_id = str(uuid.uuid4())
+    speaker = cfg.BARK_SPEAKER
+
+    sess = call_store.create_session(
+        call_id=call_id, direction="outbound",
+        number=number, goal=goal, language=language, speaker=speaker,
+    )
+    sess.status = "prep"
+
+    script_data = await generate_script(goal, language)
+    entries = await prerender_audio(script_data, call_id, speaker)
+    sess.script = entries
+    sess.status = "dialing"
+
+    webhook_url = f"{cfg.BASE_URL}/api/calls/gather?call_id={call_id}&turn=0"
+    twilio_sid = dial_outbound(to=number, call_id=call_id, webhook_url=webhook_url)
+    sess.twilio_sid = twilio_sid
+
+    return {"call_id": call_id, "status": "dialing", "twilio_sid": twilio_sid}
+
+
+async def make_call(number: str, goal: str, language: str = "en") -> dict:
+    """Agent tool: make an outbound phone call."""
+    return await run_outbound_call(number=number, goal=goal, language=language)
+
+
+async def get_call_transcript(call_id: str) -> dict:
+    """Agent tool: retrieve the transcript of a completed call."""
+    result = call_store.get_transcript(call_id)
+    if result is None:
+        return {"error": f"No call found with id {call_id}"}
+    return result
+
+
+async def list_calls(limit: int = 20) -> list:
+    """Agent tool: list recent call history."""
+    return call_store.get_call_history(limit=limit)

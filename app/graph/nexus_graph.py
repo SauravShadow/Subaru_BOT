@@ -12,7 +12,7 @@ from app.graph.workers.base import make_worker_graph
 
 logger = logging.getLogger(__name__)
 
-_KNOWN_AGENTS = ["backend", "frontend", "qa", "devops", "browser"]
+_KNOWN_AGENTS = ["backend", "frontend", "qa", "devops", "browser", "call_agent"]
 _worker_subgraphs: dict = {}
 
 
