@@ -648,6 +648,97 @@ async def api_calls_gather(request: Request, background_tasks: BackgroundTasks):
     )
 
 
+# ── Inbound call helpers ────────────────────────────────────────────────────────
+
+async def _inbound_agent_reply(call_id: str, speech: str) -> str:
+    """Generate a live inbound reply via the Gemini-flash fast path (quick_reply).
+
+    Reconciliation item 1: live turns use call_prep.quick_reply, NOT the agentic
+    loop. The original run_agent("ceo", …, thread_id=…) was a bug — run_agent has
+    no thread_id param and requires a send callback.
+    """
+    sess = call_store.get_session(call_id)
+    goal       = sess.goal if sess else "inbound call"
+    language   = sess.language if sess else "en"
+    transcript = sess.transcript if sess else []
+    return await quick_reply(goal, transcript, language)
+
+
+# ── Inbound call — Twilio calls our number ─────────────────────────────────────
+
+@router.post("/api/calls/inbound")
+async def api_calls_inbound(request: Request):
+    form = await request.form()
+    params = dict(form)
+    sig = request.headers.get("X-Twilio-Signature", "")
+    url = str(request.url)
+
+    if config.TWILIO_AUTH_TOKEN and not validate_twilio_request(url, params, sig):
+        return Response("Forbidden", status_code=403)
+
+    caller    = str(form.get("From", "unknown"))
+    call_sid  = str(form.get("CallSid", ""))
+    call_id   = call_sid or caller.replace("+", "")
+
+    call_store.create_session(
+        call_id=call_id, direction="inbound",
+        number=caller, goal="inbound call",
+        language="en", speaker=config.BARK_SPEAKER,
+    )
+
+    respond_url = f"{config.BASE_URL}/api/calls/inbound/respond?call_id={call_id}"
+    greeting = "Hi, this is NEXUS, your AI assistant. How can I help you today?"
+    call_store.add_turn(call_id, "nexus", greeting)
+
+    return Response(
+        build_say_and_gather(text=greeting, gather_action=respond_url, language="en-US"),
+        media_type="application/xml",
+    )
+
+
+@router.post("/api/calls/inbound/respond")
+async def api_calls_inbound_respond(request: Request, background_tasks: BackgroundTasks):
+    form    = await request.form()
+    params  = dict(form)
+    sig     = request.headers.get("X-Twilio-Signature", "")
+    url     = str(request.url)
+    call_id = str(form.get("call_id", ""))
+    speech  = str(form.get("SpeechResult", "")).strip()
+
+    if config.TWILIO_AUTH_TOKEN and not validate_twilio_request(url, params, sig):
+        return Response("Forbidden", status_code=403)
+
+    sess = call_store.get_session(call_id)
+    respond_url = f"{config.BASE_URL}/api/calls/inbound/respond?call_id={call_id}"
+
+    if speech:
+        call_store.add_turn(call_id, "them", speech)
+
+        goodbye_words = {"bye", "goodbye", "that's all", "thanks bye", "no thanks"}
+        if any(w in speech.lower() for w in goodbye_words):
+            farewell = "Thank you for calling. Have a great day! Goodbye."
+            call_store.add_turn(call_id, "nexus", farewell)
+            if sess:
+                background_tasks.add_task(
+                    call_store.end_session, call_id, "success",
+                    f"Inbound call from {sess.number} completed."
+                )
+            return Response(build_hangup(farewell), media_type="application/xml")
+
+        reply = await _inbound_agent_reply(call_id, speech)
+        call_store.add_turn(call_id, "nexus", reply)
+        return Response(
+            build_say_and_gather(text=reply, gather_action=respond_url, language="en-US"),
+            media_type="application/xml",
+        )
+
+    prompt = "I didn't catch that. Could you say it again?"
+    return Response(
+        build_say_and_gather(text=prompt, gather_action=respond_url, language="en-US"),
+        media_type="application/xml",
+    )
+
+
 # ── SPA fallback (must be last) ────────────────────────────────────────────────
 
 from fastapi.responses import FileResponse as _FileResponse
