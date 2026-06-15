@@ -59,11 +59,13 @@ SKILLS_DIR     = Path("/app/skills")
 # Bark TTS sidecar
 BARK_SVC_URL = os.environ.get("BARK_SVC_URL", "http://bark-svc:9001")
 
-# Twilio telephony
-TWILIO_ACCOUNT_SID  = os.environ.get("TWILIO_ACCOUNT_SID",  "")
-TWILIO_AUTH_TOKEN   = os.environ.get("TWILIO_AUTH_TOKEN",   "")
-TWILIO_PHONE_NUMBER = os.environ.get("TWILIO_PHONE_NUMBER", "")
-BASE_URL            = os.environ.get("BASE_URL", "")  # public Cloudflare tunnel URL e.g. https://nexus.example.com
+# Telnyx telephony (Call Control)
+TELNYX_API_KEY       = os.environ.get("TELNYX_API_KEY",       "")
+TELNYX_PUBLIC_KEY    = os.environ.get("TELNYX_PUBLIC_KEY",    "")  # webhook Ed25519 signing key
+TELNYX_CONNECTION_ID = os.environ.get("TELNYX_CONNECTION_ID", "")  # Call Control Application id
+TELNYX_PHONE_NUMBER  = os.environ.get("TELNYX_PHONE_NUMBER",  "")
+TELNYX_VOICE         = os.environ.get("TELNYX_VOICE",         "female")  # Telnyx `speak` voice
+BASE_URL             = os.environ.get("BASE_URL", "")  # public Cloudflare tunnel URL e.g. https://nexus.example.com
 
 # Voice
 BARK_SPEAKER = os.environ.get("BARK_SPEAKER", "en-US-GuyNeural")  # edge-tts voice name
