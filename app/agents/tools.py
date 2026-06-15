@@ -347,8 +347,8 @@ async def run_outbound_call(number: str, goal: str, language: str = "en", voice:
     from app.services.telephony import dial_outbound
     from app import config as cfg
 
-    if not cfg.TWILIO_ACCOUNT_SID:
-        return {"error": "Twilio not configured — set TWILIO_ACCOUNT_SID in .env"}
+    if not cfg.TELNYX_API_KEY:
+        return {"error": "Telnyx not configured — set TELNYX_API_KEY in .env"}
     if not cfg.BASE_URL:
         return {"error": "BASE_URL not configured — set public tunnel URL in .env"}
 
@@ -366,11 +366,12 @@ async def run_outbound_call(number: str, goal: str, language: str = "en", voice:
     sess.script = entries
     sess.status = "dialing"
 
-    webhook_url = f"{cfg.BASE_URL}/api/calls/gather?call_id={call_id}&turn=0"
-    twilio_sid = dial_outbound(to=number, call_id=call_id, webhook_url=webhook_url)
-    sess.twilio_sid = twilio_sid
+    webhook_url = f"{cfg.BASE_URL}/api/calls/webhook"
+    call_control_id = dial_outbound(to=number, call_id=call_id, webhook_url=webhook_url)
+    sess.telnyx_call_control_id = call_control_id
+    call_store.bind_call_control_id(call_control_id, call_id)
 
-    return {"call_id": call_id, "status": "dialing", "twilio_sid": twilio_sid}
+    return {"call_id": call_id, "status": "dialing", "call_control_id": call_control_id}
 
 
 async def make_call(number: str, goal: str, language: str = "en") -> dict:

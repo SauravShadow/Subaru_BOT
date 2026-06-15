@@ -6,7 +6,7 @@ from unittest.mock import AsyncMock, patch, MagicMock
 async def test_make_call_tool_returns_call_id():
     """make_call returns a dict with call_id and status."""
     with patch("app.agents.tools.run_outbound_call", new_callable=AsyncMock) as mock_run:
-        mock_run.return_value = {"call_id": "abc-123", "status": "dialing", "twilio_sid": "CA999"}
+        mock_run.return_value = {"call_id": "abc-123", "status": "dialing", "call_control_id": "ctrl-1"}
         from app.agents.tools import make_call
         result = await make_call(number="+919876543210", goal="Book a table", language="en")
     assert result["call_id"] == "abc-123"
@@ -23,7 +23,7 @@ async def test_handle_make_call_tags_fires_and_strips(monkeypatch):
 
     async def fake_run(number, goal, language="en", voice=""):
         called.update(number=number, goal=goal, language=language)
-        return {"call_id": "abc-123", "status": "dialing", "twilio_sid": "CA1"}
+        return {"call_id": "abc-123", "status": "dialing", "call_control_id": "ctrl-1"}
 
     monkeypatch.setattr(tools, "run_outbound_call", fake_run)
     sent = []
@@ -90,3 +90,13 @@ async def test_get_call_transcript_tool():
         result = await get_call_transcript(call_id="abc-123")
     assert result["id"] == "abc-123"
     assert len(result["transcript"]) == 1
+
+
+@pytest.mark.asyncio
+async def test_run_outbound_call_requires_telnyx_key(monkeypatch):
+    import app.config as cfg
+    from app.agents import tools
+    monkeypatch.setattr(cfg, "TELNYX_API_KEY", "")
+    res = await tools.run_outbound_call(number="+1", goal="hi", language="en")
+    assert "error" in res
+    assert "TELNYX_API_KEY" in res["error"]
