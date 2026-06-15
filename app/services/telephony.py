@@ -1,82 +1,104 @@
-"""Twilio SDK wrapper — TwiML builders, outbound dialer, webhook validator."""
+"""Telnyx Call Control wrapper — outbound dialer, call-control commands, webhook verify."""
+import base64
 import logging
 from typing import Optional
 
-from twilio.rest import Client
-from twilio.request_validator import RequestValidator
-from twilio.twiml.voice_response import VoiceResponse, Gather, Play, Say
+from telnyx import Telnyx
 
 from app import config
 
 logger = logging.getLogger(__name__)
 
-_GATHER_TIMEOUT  = 8    # seconds of silence before timeout
-_GATHER_LANGUAGE = "en-US"
+_TRANSCRIPTION_TRACKS = "inbound"  # transcribe the remote party, not our own TTS
 
 
-def _get_client() -> Client:
-    if not config.TWILIO_ACCOUNT_SID or not config.TWILIO_AUTH_TOKEN:
-        raise RuntimeError("TWILIO_ACCOUNT_SID / TWILIO_AUTH_TOKEN not configured")
-    return Client(config.TWILIO_ACCOUNT_SID, config.TWILIO_AUTH_TOKEN)
+def _get_client() -> Telnyx:
+    if not config.TELNYX_API_KEY:
+        raise RuntimeError("TELNYX_API_KEY not configured")
+    return Telnyx(api_key=config.TELNYX_API_KEY, public_key=config.TELNYX_PUBLIC_KEY or None)
 
 
-def build_play_and_gather(audio_url: str, gather_action: str,
-                          language: str = _GATHER_LANGUAGE) -> str:
-    """TwiML: play pre-rendered audio then listen for speech."""
-    resp = VoiceResponse()
-    gather = Gather(
-        input="speech",
-        timeout=_GATHER_TIMEOUT,
-        action=gather_action,
-        method="POST",
-        language=language,
-    )
-    gather.play(audio_url)
-    resp.append(gather)
-    return str(resp)
+def encode_client_state(call_id: str) -> str:
+    """Telnyx requires client_state to be base64-encoded."""
+    return base64.b64encode((call_id or "").encode()).decode()
 
 
-def build_say_and_gather(text: str, gather_action: str,
-                         language: str = _GATHER_LANGUAGE) -> str:
-    """TwiML: speak text via Twilio TTS then listen for speech."""
-    resp = VoiceResponse()
-    gather = Gather(
-        input="speech",
-        timeout=_GATHER_TIMEOUT,
-        action=gather_action,
-        method="POST",
-        language=language,
-    )
-    gather.say(text, language=language)
-    resp.append(gather)
-    return str(resp)
-
-
-def build_hangup(final_text: str = "", language: str = _GATHER_LANGUAGE) -> str:
-    """TwiML: optionally say a closing line then hang up."""
-    resp = VoiceResponse()
-    if final_text:
-        resp.say(final_text, language=language)
-    resp.hangup()
-    return str(resp)
+def decode_client_state(token: Optional[str]) -> str:
+    if not token:
+        return ""
+    try:
+        return base64.b64decode(token).decode()
+    except Exception:
+        return ""
 
 
 def dial_outbound(to: str, call_id: str, webhook_url: str) -> str:
-    """Dial a number via Twilio. Returns the call SID."""
+    """Dial a number via Telnyx Call Control. Returns the call_control_id."""
+    if not config.TELNYX_PHONE_NUMBER:
+        raise RuntimeError("TELNYX_PHONE_NUMBER not configured")
+    if not config.TELNYX_CONNECTION_ID:
+        raise RuntimeError("TELNYX_CONNECTION_ID not configured")
     client = _get_client()
-    if not config.TWILIO_PHONE_NUMBER:
-        raise RuntimeError("TWILIO_PHONE_NUMBER not configured")
-    call = client.calls.create(
+    resp = client.calls.dial(
+        connection_id=config.TELNYX_CONNECTION_ID,
         to=to,
-        from_=config.TWILIO_PHONE_NUMBER,
-        url=webhook_url,
-        method="POST",
+        from_=config.TELNYX_PHONE_NUMBER,
+        webhook_url=webhook_url,
+        client_state=encode_client_state(call_id),
     )
-    logger.info("Dialed %s → SID %s", to, call.sid)
-    return call.sid
+    ccid = resp.data.call_control_id
+    logger.info("Dialed %s → call_control_id %s", to, ccid)
+    return ccid
 
 
-def validate_twilio_request(url: str, params: dict, signature: str) -> bool:
-    """Verify the X-Twilio-Signature header to confirm the webhook is genuine."""
-    validator = RequestValidator(config.TWILIO_AUTH_TOKEN)
-    return validator.validate(url, params, signature)
+def answer_call(call_control_id: str, call_id: str = "") -> None:
+    _get_client().calls.actions.answer(
+        call_control_id, client_state=encode_client_state(call_id)
+    )
+
+
+def play_audio(call_control_id: str, audio_url: str, call_id: str = "") -> None:
+    """Play a pre-rendered WAV (Telnyx fetches audio_url)."""
+    _get_client().calls.actions.start_playback(
+        call_control_id, audio_url=audio_url, client_state=encode_client_state(call_id)
+    )
+
+
+def speak_text(call_control_id: str, text: str, language: str = "en",
+               call_id: str = "") -> None:
+    """Speak dynamic text via Telnyx TTS."""
+    _get_client().calls.actions.speak(
+        call_control_id,
+        payload=text,
+        voice=config.TELNYX_VOICE,
+        language=language,
+        client_state=encode_client_state(call_id),
+    )
+
+
+def start_transcription(call_control_id: str, language: str = "en") -> None:
+    """Begin streaming STT on the remote party's audio (yields call.transcription events).
+
+    NOTE: Telnyx's start_transcription has NO `language` arg (verified against
+    telnyx 4.153.0); language is chosen via transcription_engine_config. We keep
+    `language` in this wrapper's signature for call-site stability but forward only
+    the track selection; the default engine handles language.
+    """
+    _get_client().calls.actions.start_transcription(
+        call_control_id,
+        transcription_tracks=_TRANSCRIPTION_TRACKS,
+    )
+
+
+def hangup_call(call_control_id: str) -> None:
+    _get_client().calls.actions.hangup(call_control_id)
+
+
+def verify_webhook(payload: str, headers: dict):
+    """Verify the Telnyx Ed25519 signature and return the parsed event.
+
+    Raises if the signature is invalid. `payload` is the raw request body (str);
+    `headers` must include telnyx-signature-ed25519 and telnyx-timestamp.
+    """
+    client = _get_client()
+    return client.webhooks.unwrap(payload, headers=headers, key=config.TELNYX_PUBLIC_KEY)
