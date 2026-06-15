@@ -77,12 +77,15 @@ def test_verify_webhook_returns_event(monkeypatch):
     monkeypatch.setattr(cfg, "TELNYX_PUBLIC_KEY", "pub-key")
     mock_event = MagicMock()
     mock_client = MagicMock()
-    mock_client.webhooks.unwrap.return_value = mock_event
-    with patch("app.services.telephony._get_client", return_value=mock_client):
-        ev = telephony.verify_webhook('{"x":1}', {"telnyx-signature-ed25519": "s"})
+    mock_client.webhooks.unsafe_unwrap.return_value = mock_event
+    with patch("app.services.telephony._get_client", return_value=mock_client), \
+         patch("app.services.telephony.verify_webhook_signature") as mock_verify:
+        ev = telephony.verify_webhook(
+            '{"x":1}', {"telnyx-signature-ed25519": "s", "telnyx-timestamp": "1"})
     assert ev is mock_event
-    kwargs = mock_client.webhooks.unwrap.call_args[1]
-    assert kwargs["key"] == "pub-key"
+    assert mock_verify.called                 # signature was verified
+    assert mock_verify.call_args[0][2] == "pub-key"
+    assert mock_client.webhooks.unsafe_unwrap.called
 
 
 def test_verify_webhook_parses_unverified_without_key(monkeypatch):
@@ -91,8 +94,9 @@ def test_verify_webhook_parses_unverified_without_key(monkeypatch):
     mock_event = MagicMock()
     mock_client = MagicMock()
     mock_client.webhooks.unsafe_unwrap.return_value = mock_event
-    with patch("app.services.telephony._get_client", return_value=mock_client):
+    with patch("app.services.telephony._get_client", return_value=mock_client), \
+         patch("app.services.telephony.verify_webhook_signature") as mock_verify:
         ev = telephony.verify_webhook('{"x":1}', {})
     assert ev is mock_event
     assert mock_client.webhooks.unsafe_unwrap.called
-    assert not mock_client.webhooks.unwrap.called
+    assert not mock_verify.called             # no key → no verification

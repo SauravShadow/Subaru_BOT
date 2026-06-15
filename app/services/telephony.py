@@ -4,6 +4,7 @@ import logging
 from typing import Optional
 
 from telnyx import Telnyx
+from telnyx.lib.webhook_verification import verify_webhook_signature
 
 from app import config
 
@@ -97,13 +98,15 @@ def hangup_call(call_control_id: str) -> None:
 def verify_webhook(payload: str, headers: dict):
     """Verify the Telnyx Ed25519 signature and return the parsed event.
 
-    When TELNYX_PUBLIC_KEY is configured, the signature is verified and an invalid
-    signature raises. When no public key is configured (e.g. signing not yet set up),
-    the payload is parsed WITHOUT verification so the webhook still functions.
+    When TELNYX_PUBLIC_KEY is configured, the Ed25519 signature is verified via
+    Telnyx's verify_webhook_signature helper (raises WebhookVerificationError on an
+    invalid/missing signature). When no public key is configured (e.g. signing not
+    yet set up), the payload is parsed WITHOUT verification so the webhook still
+    functions. Either way the raw body is parsed into a typed event via unsafe_unwrap.
     `payload` is the raw request body (str); `headers` must include
     telnyx-signature-ed25519 and telnyx-timestamp when verifying.
     """
     client = _get_client()
     if config.TELNYX_PUBLIC_KEY:
-        return client.webhooks.unwrap(payload, headers=headers, key=config.TELNYX_PUBLIC_KEY)
+        verify_webhook_signature(payload, headers, config.TELNYX_PUBLIC_KEY)
     return client.webhooks.unsafe_unwrap(payload)
