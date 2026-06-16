@@ -2,7 +2,10 @@
 All REST API routes for Shadow Garden.
 """
 import asyncio
+import asyncio as _asyncio
 import logging
+import re as _re
+import time
 from datetime import datetime
 from pathlib import Path
 
@@ -578,6 +581,22 @@ async def api_call_audio(call_id: str, idx: int):
 
 _GOODBYE_WORDS = {"bye", "goodbye", "thank you", "that's all", "no thanks", "thanks bye"}
 
+_SILENCE_MS = 700  # interim unchanged this long => end of turn
+
+
+def _normalize(text: str) -> str:
+    cleaned = _re.sub(r"[^a-z0-9 ]", "", (text or "").lower())
+    return _re.sub(r" +", " ", cleaned).strip()
+
+
+def _silence_should_fire(sess, now: float) -> bool:
+    txt = (sess.last_interim_text or "").strip()
+    if not txt:
+        return False
+    if _normalize(txt) == _normalize(sess.responded_text):
+        return False
+    return (now - sess.last_interim_at) * 1000 >= _SILENCE_MS
+
 
 async def _live_reply(call_id: str, speech: str) -> str:
     """Generate a live, contextual reply (LLM). Answers whatever the caller said and
@@ -592,6 +611,63 @@ async def _live_reply(call_id: str, speech: str) -> str:
 
 def _audio_url(call_id: str, idx: int) -> str:
     return f"{config.BASE_URL}/api/calls/audio/{call_id}/{idx}"
+
+
+async def _silence_watch(call_id: str, ccid: str) -> None:
+    try:
+        await _asyncio.sleep(_SILENCE_MS / 1000)
+    except _asyncio.CancelledError:
+        return
+    sess = call_store.get_session(call_id)
+    if sess and _silence_should_fire(sess, time.monotonic()):
+        await _finalize_turn(call_id, ccid, sess.last_interim_text)
+
+
+def _arm_silence_timer(call_id: str, ccid: str) -> None:
+    sess = call_store.get_session(call_id)
+    if not sess:
+        return
+    if sess.silence_task is not None:
+        sess.silence_task.cancel()
+    sess.silence_task = _asyncio.create_task(_silence_watch(call_id, ccid))
+
+
+async def _finalize_turn(call_id: str, ccid: str, speech: str) -> None:
+    sess = call_store.get_session(call_id)
+    if not sess:
+        return
+    speech = (speech or "").strip()
+    if not speech or _normalize(speech) == _normalize(sess.responded_text):
+        return
+    sess.responded_text = speech
+    if sess.silence_task is not None:
+        sess.silence_task.cancel()
+        sess.silence_task = None
+    sess.turn = TurnTimer()
+    sess.turn.mark("last_interim", at=sess.last_interim_at or None)
+    sess.turn.mark("final")
+    call_store.add_turn(call_id, "them", speech)
+    await _respond_to_turn(call_id, ccid, speech)
+
+
+async def _respond_to_turn(call_id: str, ccid: str, speech: str) -> None:
+    sess = call_store.get_session(call_id)
+    if not sess:
+        return
+    lang = sess.language
+    if any(w in speech.lower() for w in _GOODBYE_WORDS):
+        closing_text = ("Thank you. Goodbye!" if sess.direction == "outbound"
+                        else "Thank you for calling. Have a great day! Goodbye.")
+        call_store.add_turn(call_id, "nexus", closing_text)
+        telephony.speak_text(ccid, closing_text, language=lang, call_id=call_id)
+        telephony.hangup_call(ccid)
+        return
+    reply = await _live_reply(call_id, speech)
+    sess.turn.mark("llm_done")
+    call_store.add_turn(call_id, "nexus", reply)
+    telephony.speak_text(ccid, reply, language=lang, call_id=call_id)
+    sess.turn.mark("speak")
+    logger.info("[call %s] %s", call_id, sess.turn.summary_line())
 
 
 # ── Telnyx Call Control webhook — single event dispatcher ───────────────────────
@@ -649,39 +725,21 @@ async def api_calls_webhook(request: Request, background_tasks: BackgroundTasks)
 
         if etype == "call.transcription":
             td = getattr(payload, "transcription_data", None)
-            if not td or not getattr(td, "is_final", False):
+            if not td:
                 return Response(status_code=200)
-            speech = (getattr(td, "transcript", "") or "").strip()
+            text = (getattr(td, "transcript", "") or "").strip()
+            is_final = bool(getattr(td, "is_final", False))
             sess = call_store.get_session(call_id)
-            if not speech or not sess:
+            if not sess or not text:
                 return Response(status_code=200)
-            call_store.add_turn(call_id, "them", speech)
-
-            sess.turn = TurnTimer()
-            sess.turn.mark("last_interim", at=sess.last_interim_at or None)
-            sess.turn.mark("final")
-
-            if any(w in speech.lower() for w in _GOODBYE_WORDS):
-                if sess.direction == "outbound":
-                    closing = next((e for e in sess.script if e.idx == len(sess.script) - 1), None)
-                    closing_text = closing.answer if closing else "Thank you. Goodbye!"
-                else:
-                    closing_text = "Thank you for calling. Have a great day! Goodbye."
-                call_store.add_turn(call_id, "nexus", closing_text)
-                telephony.speak_text(ccid, closing_text, language=sess.language, call_id=call_id)
-                telephony.hangup_call(ccid)
-                background_tasks.add_task(
-                    call_store.end_session, call_id, "success",
-                    f"Call completed. Last exchange: {speech[:80]}")
-                background_tasks.add_task(cleanup_call_audio, call_id)
+            if not is_final:
+                sess.last_interim_text = text
+                sess.last_interim_at = time.monotonic()
+                _arm_silence_timer(call_id, ccid)
                 return Response(status_code=200)
-
-            reply = await _live_reply(call_id, speech)
-            sess.turn.mark("llm_done")
-            call_store.add_turn(call_id, "nexus", reply)
-            telephony.speak_text(ccid, reply, language=sess.language, call_id=call_id)
-            sess.turn.mark("speak")
-            logger.info("[call %s] %s", call_id, sess.turn.summary_line())
+            sess.last_interim_text = text
+            sess.last_interim_at = sess.last_interim_at or time.monotonic()
+            await _finalize_turn(call_id, ccid, text)
             return Response(status_code=200)
 
         if etype == "call.hangup":
