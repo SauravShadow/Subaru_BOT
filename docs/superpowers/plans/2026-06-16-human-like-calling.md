@@ -194,10 +194,18 @@ Co-Authored-By: Claude Opus 4.8 <noreply@anthropic.com>"
 - Modify: `app/services/telephony.py` (`start_transcription`)
 - Test: `tests/test_telephony.py` (extend)
 
+**IMPORTANT (verified against telnyx 4.153.0):** the Google transcription config has NO
+endpointing/timeout fields. Valid keys are only: `enable_speaker_diarization`, `hints`,
+`interim_results`, `language`, `max_speaker_count`, `min_speaker_count`, `model`,
+`profanity_filter`, `speech_context`, `transcription_engine`, `use_enhanced`. So we cannot
+shorten the silence threshold via config — that is handled by the interim-silence timer
+(Task 4). This task instead improves phone STT quality/speed with the `phone_call` model +
+`use_enhanced` (valid keys), which also reduces mis-transcriptions.
+
 - [ ] **Step 1: Write the failing test**
 Append to `tests/test_telephony.py`:
 ```python
-def test_start_transcription_sets_google_endpointing():
+def test_start_transcription_uses_phone_model():
     mock_client = MagicMock()
     with patch("app.services.telephony._get_client", return_value=mock_client):
         telephony.start_transcription("ctrl-1", language="en")
@@ -206,18 +214,17 @@ def test_start_transcription_sets_google_endpointing():
     cfg = kwargs["transcription_engine_config"]
     assert cfg["language"] == "en"
     assert cfg["interim_results"] is True
-    # endpointing: ask Google to finalize quickly
-    assert cfg.get("enable_separate_recognition_per_channel") in (None, False)
-    assert cfg["single_utterance"] is False
+    assert cfg["model"] == "phone_call"
+    assert cfg["use_enhanced"] is True
     assert kwargs["transcription_tracks"] == "inbound"
 ```
 
 - [ ] **Step 2: Run to verify it fails**
-Run: `docker exec -w /app virtual-company python -m pytest tests/test_telephony.py::test_start_transcription_sets_google_endpointing -v`
-Expected: FAIL — `single_utterance` not in config.
+Run: `docker exec -w /app virtual-company python -m pytest tests/test_telephony.py::test_start_transcription_uses_phone_model -v`
+Expected: FAIL — `model` not in config.
 
 - [ ] **Step 3: Implement**
-In `app/services/telephony.py`, replace the body of `start_transcription` so the config sets endpointing fields (keep the existing `_short_lang` + `_TRANSCRIPTION_TRACKS`):
+In `app/services/telephony.py`, replace the body of `start_transcription` (keep the existing `_short_lang` + `_TRANSCRIPTION_TRACKS`):
 ```python
     _get_client().calls.actions.start_transcription(
         call_control_id,
@@ -227,14 +234,12 @@ In `app/services/telephony.py`, replace the body of `start_transcription` so the
             "transcription_engine": "Google",
             "language": _short_lang(language),
             "interim_results": True,
-            # Stream continuously (multi-turn), but bias Google toward faster finals.
-            "single_utterance": False,
-            "speech_recognition_timeout_ms": 800,
+            "model": "phone_call",   # tuned for telephony audio
+            "use_enhanced": True,
         },
     )
 ```
-Note: `speech_recognition_timeout_ms` is best-effort; if Telnyx rejects an unknown key (422), remove it and rely on the interim-silence timer (Task 4). Validate with the bogus-id probe:
-`POST /v2/calls/<id>/actions/transcription_start` returns code 90015 (bad call id) when the *config* is accepted; a config error returns a different 422.
+Only valid keys are used, so no 422 risk. (The end-of-turn latency win comes from Task 4.)
 
 - [ ] **Step 4: Run tests**
 Run: `docker exec -w /app virtual-company python -m pytest tests/test_telephony.py -v`
