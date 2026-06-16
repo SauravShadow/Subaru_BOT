@@ -14,3 +14,12 @@ def test_resolve_unknown_returns_none():
 def test_session_has_call_control_id_field():
     sess = call_store.create_session("cid-2", "outbound", "+1", "goal", "en", "v")
     assert sess.telnyx_call_control_id is None
+
+
+def test_session_has_live_turn_fields():
+    s = call_store.create_session("cid-live", "outbound", "+1", "g", "en", "v")
+    assert s.is_speaking is False
+    assert s.last_interim_text == ""
+    assert s.last_interim_at == 0.0
+    assert s.pending_caller_text is None
+    assert s.responded_text == ""

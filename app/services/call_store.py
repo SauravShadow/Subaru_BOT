@@ -43,6 +43,16 @@ class CallSession:
     started_at: datetime = field(default_factory=datetime.utcnow)
     status: str = "prep"   # prep | dialing | connected | ended
     telnyx_call_control_id: Optional[str] = None
+    # Live-turn state (human-like loop)
+    is_speaking: bool = False
+    last_interim_text: str = ""
+    last_interim_at: float = 0.0
+    pending_caller_text: Optional[str] = None
+    responded_text: str = ""
+    silence_task: object = None
+    turn: object = None
+    speculative_key: str = ""
+    speculative_text: str = ""
 
 
 def _conn(db_path=None) -> sqlite3.Connection:
@@ -107,6 +117,15 @@ def bind_call_control_id(call_control_id: str, call_id: str) -> None:
 
 def resolve_call_id(call_control_id: str) -> Optional[str]:
     return _ccid_to_call_id.get(call_control_id)
+
+
+def list_active() -> list[dict]:
+    """Summaries of all in-progress calls (for the live dashboard)."""
+    return [
+        {"call_id": s.call_id, "status": s.status, "number": s.number,
+         "goal": s.goal, "direction": s.direction}
+        for s in _active.values()
+    ]
 
 
 def add_turn(call_id: str, speaker: str, text: str) -> None:

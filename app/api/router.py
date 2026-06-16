@@ -22,7 +22,8 @@ from app.services.self_heal import load_approvals, apply_approval, deny_approval
 from app.agents import tools as agent_tools
 from app.services import telephony
 from app.services import call_store
-from app.agents.call_prep import match_utterance, cleanup_call_audio, quick_reply, _AUDIO_DIR
+from app.services.call_metrics import TurnTimer
+from app.agents.call_prep import cleanup_call_audio, quick_reply, _AUDIO_DIR
 
 logger = logging.getLogger(__name__)
 
@@ -578,13 +579,15 @@ async def api_call_audio(call_id: str, idx: int):
 _GOODBYE_WORDS = {"bye", "goodbye", "thank you", "that's all", "no thanks", "thanks bye"}
 
 
-async def _inbound_agent_reply(call_id: str, speech: str) -> str:
-    """Generate a live inbound reply via the Gemini-flash fast path (quick_reply)."""
+async def _live_reply(call_id: str, speech: str) -> str:
+    """Generate a live, contextual reply (LLM). Answers whatever the caller said and
+    advances the goal; the call script (if any) is passed as guidance, not canned text."""
     sess = call_store.get_session(call_id)
-    goal       = sess.goal if sess else "inbound call"
+    goal       = sess.goal if sess else "this call"
     language   = sess.language if sess else "en"
     transcript = sess.transcript if sess else []
-    return await quick_reply(goal, transcript, language)
+    points     = [e.answer for e in sess.script] if sess and sess.script else None
+    return await quick_reply(goal, transcript, language, talking_points=points)
 
 
 def _audio_url(call_id: str, idx: int) -> str:
@@ -654,6 +657,10 @@ async def api_calls_webhook(request: Request, background_tasks: BackgroundTasks)
                 return Response(status_code=200)
             call_store.add_turn(call_id, "them", speech)
 
+            sess.turn = TurnTimer()
+            sess.turn.mark("last_interim", at=sess.last_interim_at or None)
+            sess.turn.mark("final")
+
             if any(w in speech.lower() for w in _GOODBYE_WORDS):
                 if sess.direction == "outbound":
                     closing = next((e for e in sess.script if e.idx == len(sess.script) - 1), None)
@@ -669,17 +676,12 @@ async def api_calls_webhook(request: Request, background_tasks: BackgroundTasks)
                 background_tasks.add_task(cleanup_call_audio, call_id)
                 return Response(status_code=200)
 
-            if sess.direction == "outbound":
-                matched = match_utterance(speech, sess.script)
-                if matched:
-                    matched.used = True
-                    call_store.add_turn(call_id, "nexus", matched.answer)
-                    telephony.speak_text(ccid, matched.answer, language=sess.language, call_id=call_id)
-                    return Response(status_code=200)
-
-            reply = await _inbound_agent_reply(call_id, speech)
+            reply = await _live_reply(call_id, speech)
+            sess.turn.mark("llm_done")
             call_store.add_turn(call_id, "nexus", reply)
             telephony.speak_text(ccid, reply, language=sess.language, call_id=call_id)
+            sess.turn.mark("speak")
+            logger.info("[call %s] %s", call_id, sess.turn.summary_line())
             return Response(status_code=200)
 
         if etype == "call.hangup":
@@ -714,6 +716,12 @@ async def api_calls_search(q: str = "", limit: int = 20):
     if not q:
         return []
     return call_store.search_calls(q=q, limit=limit)
+
+
+@router.get("/api/calls/active")
+async def api_calls_active():
+    """All in-progress calls (live dashboard auto-detects calls started anywhere)."""
+    return call_store.list_active()
 
 
 @router.get("/api/calls/{call_id}/live")
