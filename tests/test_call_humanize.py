@@ -23,3 +23,12 @@ def test_pick_filler_returns_short_phrase():
     from app.agents.call_prep import pick_filler
     f = pick_filler()
     assert isinstance(f, str) and 0 < len(f) <= 40
+
+def test_sanitize_ssml_wraps_and_detects():
+    from app.agents.call_prep import sanitize_ssml
+    payload, ptype = sanitize_ssml('Sure<break time="200ms"/> now.')
+    assert ptype == "ssml" and payload.startswith("<speak>") and payload.endswith("</speak>")
+    payload2, ptype2 = sanitize_ssml("just plain text")
+    assert ptype2 == "text" and payload2 == "just plain text"
+    payload3, ptype3 = sanitize_ssml("<speak>bad <oops></speak>")
+    assert ptype3 == "text"   # malformed XML -> fall back to plain

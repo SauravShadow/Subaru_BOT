@@ -598,7 +598,7 @@ def _silence_should_fire(sess, now: float) -> bool:
     return (now - sess.last_interim_at) * 1000 >= _SILENCE_MS
 
 
-async def _live_reply(call_id: str, speech: str) -> str:
+async def _live_reply(call_id: str, speech: str, ssml: bool = False) -> str:
     """Generate a live, contextual reply (LLM). Answers whatever the caller said and
     advances the goal; the call script (if any) is passed as guidance, not canned text."""
     sess = call_store.get_session(call_id)
@@ -606,7 +606,7 @@ async def _live_reply(call_id: str, speech: str) -> str:
     language   = sess.language if sess else "en"
     transcript = sess.transcript if sess else []
     points     = [e.answer for e in sess.script] if sess and sess.script else None
-    return await quick_reply(goal, transcript, language, talking_points=points)
+    return await quick_reply(goal, transcript, language, talking_points=points, ssml=ssml)
 
 
 def _audio_url(call_id: str, idx: int) -> str:
@@ -668,8 +668,8 @@ async def _respond_to_turn(call_id: str, ccid: str, speech: str) -> None:
         telephony.speak_text(ccid, closing_text, language=lang, call_id=call_id)
         telephony.hangup_call(ccid)
         return
-    from app.agents.call_prep import pick_filler
-    reply_task = _asyncio.create_task(_live_reply(call_id, speech))
+    from app.agents.call_prep import pick_filler, sanitize_ssml
+    reply_task = _asyncio.create_task(_live_reply(call_id, speech, ssml=True))
     done, _pending = await _asyncio.wait({reply_task}, timeout=1.0)
     if reply_task not in done:
         filler = pick_filler()
@@ -678,7 +678,8 @@ async def _respond_to_turn(call_id: str, ccid: str, speech: str) -> None:
     reply = await reply_task
     sess.turn.mark("llm_done")
     call_store.add_turn(call_id, "nexus", reply)
-    telephony.speak_text(ccid, reply, language=lang, call_id=call_id)
+    payload, ptype = sanitize_ssml(reply)
+    telephony.speak_text(ccid, payload, language=lang, call_id=call_id, payload_type=ptype)
     sess.turn.mark("speak")
     logger.info("[call %s] %s", call_id, sess.turn.summary_line())
 

@@ -123,3 +123,11 @@ def test_start_transcription_uses_phone_model():
     assert cfg["model"] == "phone_call"
     assert cfg["use_enhanced"] is True
     assert kwargs["transcription_tracks"] == "inbound"
+
+
+def test_speak_text_ssml_payload_type():
+    mock_client = MagicMock()
+    with patch("app.services.telephony._get_client", return_value=mock_client):
+        telephony.speak_text("c", "<speak>hi</speak>", language="en", payload_type="ssml")
+    kwargs = mock_client.calls.actions.speak.call_args[1]
+    assert kwargs["payload_type"] == "ssml"

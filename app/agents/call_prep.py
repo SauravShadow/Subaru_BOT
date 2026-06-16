@@ -8,7 +8,9 @@ import logging
 import os
 import random as _random
 import re
+import re as _re
 import tempfile
+import xml.etree.ElementTree as _ET
 from dataclasses import dataclass, field
 from difflib import SequenceMatcher
 from pathlib import Path
@@ -216,8 +218,23 @@ def match_utterance(
 _FALLBACK_REPLY = "Sorry, could you repeat that?"
 
 
+def sanitize_ssml(text: str) -> tuple[str, str]:
+    """Return (payload, payload_type). Wrap valid SSML in <speak>; fall back to plain text."""
+    t = (text or "").strip()
+    if "<break" not in t and "<emphasis" not in t and "<speak" not in t:
+        return t, "text"
+    body = t[len("<speak>"):-len("</speak>")] if t.startswith("<speak>") and t.endswith("</speak>") else t
+    wrapped = f"<speak>{body}</speak>"
+    try:
+        _ET.fromstring(wrapped)
+        return wrapped, "ssml"
+    except Exception:
+        return _re.sub(r"<[^>]+>", "", t), "text"
+
+
 async def quick_reply(goal: str, transcript: list, language: str = "en",
-                      talking_points: Optional[list] = None) -> str:
+                      talking_points: Optional[list] = None,
+                      ssml: bool = False) -> str:
     """Fast reply for a live call turn. Never raises.
 
     Tries Gemini-flash first (sub-2s); if it fails or is quota-exhausted, falls back
@@ -234,12 +251,14 @@ async def quick_reply(goal: str, transcript: list, language: str = "en",
         pts = "; ".join(p for p in talking_points if p)
         if pts:
             points = f"Info you may use to advance the goal (paraphrase naturally): {pts}\n"
+    ssml_hint = ' You may add <break time="200ms"/> for natural pauses.' if ssml else ""
     prompt = (
         f"You are NEXUS on a live phone call. Goal: {goal}\n"
         f"{points}"
         f"Reply in {language}. Directly answer whatever the caller just said or asked, "
         f"then steer toward the goal. ONE short spoken sentence — no markdown, no emojis, "
-        f"no stage directions. If the goal is met or the caller is done, close politely.\n\n"
+        f"no stage directions. If the goal is met or the caller is done, close politely."
+        f"{ssml_hint}\n\n"
         f"Conversation so far:\n{convo}\n\nYour next spoken line:"
     )
 

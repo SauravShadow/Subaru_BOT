@@ -93,13 +93,14 @@ def _short_lang(lang: str) -> str:
 
 
 def speak_text(call_control_id: str, text: str, language: str = "en",
-               call_id: str = "") -> None:
-    """Speak dynamic text via Telnyx TTS."""
+               call_id: str = "", payload_type: str = "text") -> None:
+    """Speak dynamic text via Telnyx TTS (payload_type 'text' or 'ssml')."""
     _get_client().calls.actions.speak(
         call_control_id,
         payload=text,
         voice=config.TELNYX_VOICE,
         language=_telnyx_language(language),
+        payload_type=payload_type,
         client_state=encode_client_state(call_id),
     )
 
