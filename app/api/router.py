@@ -640,6 +640,9 @@ async def _finalize_turn(call_id: str, ccid: str, speech: str) -> None:
     if not speech or _normalize(speech) == _normalize(sess.responded_text):
         return
     sess.responded_text = speech
+    if sess.is_speaking:
+        sess.pending_caller_text = speech    # handle when call.speak.ended fires
+        return
     if sess.silence_task is not None:
         sess.silence_task.cancel()
         sess.silence_task = None

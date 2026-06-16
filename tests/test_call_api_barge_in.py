@@ -28,3 +28,16 @@ def test_speak_started_ended_toggles_is_speaking(client):
     assert call_store.get_session("spk").is_speaking is True
     _ev(client, "call.speak.ended", "c-spk", "spk")
     assert call_store.get_session("spk").is_speaking is False
+
+
+@pytest.mark.asyncio
+async def test_finalize_defers_while_speaking():
+    from app.api import router
+    from app.services import call_store
+    s = call_store.create_session("bg", "outbound", "+1", "g", "en", "v")
+    call_store.bind_call_control_id("c-bg", "bg")
+    s.is_speaking = True
+    with patch("app.api.router._respond_to_turn") as mock_resp:
+        await router._finalize_turn("bg", "c-bg", "eight pm works")
+    assert mock_resp.called is False
+    assert s.pending_caller_text == "eight pm works"
