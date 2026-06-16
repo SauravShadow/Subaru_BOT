@@ -665,7 +665,14 @@ async def _respond_to_turn(call_id: str, ccid: str, speech: str) -> None:
         telephony.speak_text(ccid, closing_text, language=lang, call_id=call_id)
         telephony.hangup_call(ccid)
         return
-    reply = await _live_reply(call_id, speech)
+    from app.agents.call_prep import pick_filler
+    reply_task = _asyncio.create_task(_live_reply(call_id, speech))
+    done, _pending = await _asyncio.wait({reply_task}, timeout=1.0)
+    if reply_task not in done:
+        filler = pick_filler()
+        call_store.add_turn(call_id, "nexus", filler)
+        telephony.speak_text(ccid, filler, language=lang, call_id=call_id)
+    reply = await reply_task
     sess.turn.mark("llm_done")
     call_store.add_turn(call_id, "nexus", reply)
     telephony.speak_text(ccid, reply, language=lang, call_id=call_id)

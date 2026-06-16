@@ -18,3 +18,8 @@ def test_silence_should_fire():
     s.responded_text = ""
     s.last_interim_text = ""
     assert router._silence_should_fire(s, now=1002.0) is False
+
+def test_pick_filler_returns_short_phrase():
+    from app.agents.call_prep import pick_filler
+    f = pick_filler()
+    assert isinstance(f, str) and 0 < len(f) <= 40

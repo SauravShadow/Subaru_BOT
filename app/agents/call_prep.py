@@ -6,12 +6,19 @@ import base64
 import json
 import logging
 import os
+import random as _random
 import re
 import tempfile
 from dataclasses import dataclass, field
 from difflib import SequenceMatcher
 from pathlib import Path
 from typing import Optional
+
+_FILLERS = ["Let me check…", "Sure, one moment…", "Okay, let me see…", "Right, give me a sec…"]
+
+
+def pick_filler() -> str:
+    return _random.choice(_FILLERS)
 
 from app import config
 from app.services import bark_client
@@ -94,7 +101,7 @@ async def generate_script(goal: str, language: str = "en") -> dict:
             client = genai.Client(api_key=config.GEMINI_API_KEY)
             resp = await asyncio.to_thread(
                 client.models.generate_content,
-                model="gemini-2.0-flash",
+                model="gemini-3.5-flash",
                 contents=prompt,
             )
             raw = (resp.text or "").strip()
@@ -117,16 +124,25 @@ async def generate_script(goal: str, language: str = "en") -> dict:
 
     if raw:
         try:
-            raw = re.sub(r"^```(?:json)?\s*", "", raw)
-            raw = re.sub(r"\s*```$", "", raw)
-            return json.loads(raw)
+            # Strip markdown fences and extract first JSON block
+            raw = re.sub(r"```(?:json)?\s*", "", raw.strip())
+            raw = re.sub(r"```\s*", "", raw)
+            m = re.search(r"(\{.*\})", raw, re.DOTALL)
+            if m:
+                raw = m.group(1)
+            return json.loads(raw.strip())
         except Exception as exc:
             logger.error("Script JSON parse failed: %s", exc)
 
+    # Fallback: a minimal but usable script so the call can still proceed
     return {
-        "opening": f"Hello, I'm calling regarding: {goal}",
-        "script": [],
-        "closing": "Thank you for your time. Goodbye.",
+        "opening": f"Hello, I'm NEXUS calling about: {goal}. Is this a good time?",
+        "script": [
+            {"question": "Who is this?", "answer": f"I'm NEXUS, an AI assistant calling about: {goal}"},
+            {"question": "What do you need?", "answer": f"I'm reaching out about {goal}. Could you help with that?"},
+            {"question": "Can you call back later?", "answer": "Of course, when would be a good time to call back?"},
+        ],
+        "closing": "Thank you very much. Have a great day! Goodbye.",
     }
 
 
@@ -200,42 +216,59 @@ def match_utterance(
 _FALLBACK_REPLY = "Sorry, could you repeat that?"
 
 
-async def quick_reply(goal: str, transcript: list, language: str = "en") -> str:
+async def quick_reply(goal: str, transcript: list, language: str = "en",
+                      talking_points: Optional[list] = None) -> str:
     """Fast reply for a live call turn. Never raises.
 
     Tries Gemini-flash first (sub-2s); if it fails or is quota-exhausted, falls back
     to the Claude CLI (keyless, slower but real) before the canned line. `transcript`
-    is a list of call_store.Turn (objects with .speaker/.text).
+    is a list of call_store.Turn (objects with .speaker/.text). `talking_points` are
+    optional pieces of info NEXUS may use to advance the goal — guidance, not a script.
     """
     convo = "\n".join(
         f"{'You' if t.speaker == 'nexus' else 'Caller'}: {t.text}"
         for t in transcript[-8:]
     )
+    points = ""
+    if talking_points:
+        pts = "; ".join(p for p in talking_points if p)
+        if pts:
+            points = f"Info you may use to advance the goal (paraphrase naturally): {pts}\n"
     prompt = (
         f"You are NEXUS on a live phone call. Goal: {goal}\n"
-        f"Reply in {language}. ONE short spoken sentence — no markdown, no emojis, "
+        f"{points}"
+        f"Reply in {language}. Directly answer whatever the caller just said or asked, "
+        f"then steer toward the goal. ONE short spoken sentence — no markdown, no emojis, "
         f"no stage directions. If the goal is met or the caller is done, close politely.\n\n"
         f"Conversation so far:\n{convo}\n\nYour next spoken line:"
     )
 
-    # Primary: Gemini-flash (fastest)
+    # Primary: Gemini — try models in order until one responds (503/429 are common)
     if config.GEMINI_API_KEY:
-        try:
-            import google.genai as genai
-            client = genai.Client(api_key=config.GEMINI_API_KEY)
-            resp = await asyncio.wait_for(
-                asyncio.to_thread(
-                    client.models.generate_content,
-                    model="gemini-3.5-flash",
-                    contents=prompt,
-                ),
-                timeout=4.0,
-            )
-            text = (resp.text or "").strip()
-            if text:
-                return text
-        except Exception as exc:
-            logger.warning("quick_reply Gemini failed: %s", exc)
+        _GEMINI_MODELS = [
+            "gemini-3.5-flash",
+            "gemini-2.5-flash",
+            "gemini-2.5-flash-lite",
+            "gemini-flash-latest",
+        ]
+        import google.genai as genai
+        _client = genai.Client(api_key=config.GEMINI_API_KEY)
+        for _model in _GEMINI_MODELS:
+            try:
+                resp = await asyncio.wait_for(
+                    asyncio.to_thread(
+                        _client.models.generate_content,
+                        model=_model,
+                        contents=prompt,
+                    ),
+                    timeout=4.0,
+                )
+                text = (resp.text or "").strip()
+                if text:
+                    return text
+            except Exception as exc:
+                logger.warning("quick_reply %s failed: %s", _model, exc)
+                continue
 
     # Fallback: Claude CLI (keyless). Slower, but kept within Telnyx's webhook
     # response window. One short sentence, so strip to the first line.
