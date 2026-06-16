@@ -109,3 +109,17 @@ def test_verify_webhook_parses_unverified_without_key(monkeypatch):
     assert ev is mock_event
     assert mock_client.webhooks.unsafe_unwrap.called
     assert not mock_verify.called             # no key → no verification
+
+
+def test_start_transcription_uses_phone_model():
+    mock_client = MagicMock()
+    with patch("app.services.telephony._get_client", return_value=mock_client):
+        telephony.start_transcription("ctrl-1", language="en")
+    kwargs = mock_client.calls.actions.start_transcription.call_args[1]
+    assert kwargs["transcription_engine"] == "Google"
+    cfg = kwargs["transcription_engine_config"]
+    assert cfg["language"] == "en"
+    assert cfg["interim_results"] is True
+    assert cfg["model"] == "phone_call"
+    assert cfg["use_enhanced"] is True
+    assert kwargs["transcription_tracks"] == "inbound"

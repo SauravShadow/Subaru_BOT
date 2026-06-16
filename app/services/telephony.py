@@ -119,6 +119,8 @@ def start_transcription(call_control_id: str, language: str = "en") -> None:
             "transcription_engine": "Google",
             "language": _short_lang(language),
             "interim_results": True,
+            "model": "phone_call",   # tuned for telephony audio
+            "use_enhanced": True,
         },
     )
 
