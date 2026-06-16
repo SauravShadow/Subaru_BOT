@@ -32,3 +32,23 @@ def test_sanitize_ssml_wraps_and_detects():
     assert ptype2 == "text" and payload2 == "just plain text"
     payload3, ptype3 = sanitize_ssml("<speak>bad <oops></speak>")
     assert ptype3 == "text"   # malformed XML -> fall back to plain
+
+
+import pytest
+from unittest.mock import patch
+
+@pytest.mark.asyncio
+async def test_finalize_uses_speculative_cache(monkeypatch):
+    from app.api import router
+    from app.services import call_store
+    s = call_store.create_session("spec", "outbound", "+1", "g", "en", "v")
+    call_store.bind_call_control_id("c-spec", "spec")
+    s.speculative_key = router._normalize("book a table")
+    s.speculative_text = "Sure, for what time?"
+    calls = {"llm": 0}
+    async def fake_live_reply(cid, sp, ssml=False): calls["llm"] += 1; return "fresh"
+    monkeypatch.setattr(router, "_live_reply", fake_live_reply)
+    with patch("app.api.router.telephony.speak_text") as mock_speak:
+        await router._respond_to_turn("spec", "c-spec", "book a table")
+    assert calls["llm"] == 0
+    assert "Sure, for what time" in str(mock_speak.call_args)

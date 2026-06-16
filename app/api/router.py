@@ -609,6 +609,16 @@ async def _live_reply(call_id: str, speech: str, ssml: bool = False) -> str:
     return await quick_reply(goal, transcript, language, talking_points=points, ssml=ssml)
 
 
+async def _speculate(call_id: str, text: str) -> None:
+    try:
+        reply = await _live_reply(call_id, text, ssml=True)
+    except Exception:
+        return
+    sess = call_store.get_session(call_id)
+    if sess and sess.speculative_key == _normalize(text):
+        sess.speculative_text = reply
+
+
 def _audio_url(call_id: str, idx: int) -> str:
     return f"{config.BASE_URL}/api/calls/audio/{call_id}/{idx}"
 
@@ -667,6 +677,17 @@ async def _respond_to_turn(call_id: str, ccid: str, speech: str) -> None:
         call_store.add_turn(call_id, "nexus", closing_text)
         telephony.speak_text(ccid, closing_text, language=lang, call_id=call_id)
         telephony.hangup_call(ccid)
+        return
+    if sess.speculative_key and sess.speculative_key == _normalize(speech) and sess.speculative_text:
+        reply = sess.speculative_text
+        sess.speculative_key = sess.speculative_text = ""
+        sess.turn.mark("llm_done")
+        call_store.add_turn(call_id, "nexus", reply)
+        from app.agents.call_prep import sanitize_ssml
+        payload, ptype = sanitize_ssml(reply)
+        telephony.speak_text(ccid, payload, language=lang, call_id=call_id, payload_type=ptype)
+        sess.turn.mark("speak")
+        logger.info("[call %s] %s (speculative hit)", call_id, sess.turn.summary_line())
         return
     from app.agents.call_prep import pick_filler, sanitize_ssml
     reply_task = _asyncio.create_task(_live_reply(call_id, speech, ssml=True))
@@ -768,9 +789,15 @@ async def api_calls_webhook(request: Request, background_tasks: BackgroundTasks)
             if not sess or not text:
                 return Response(status_code=200)
             if not is_final:
+                prev = sess.last_interim_text
                 sess.last_interim_text = text
                 sess.last_interim_at = time.monotonic()
                 _arm_silence_timer(call_id, ccid)
+                if (text and _normalize(text) == _normalize(prev)
+                        and sess.speculative_key != _normalize(text)):
+                    sess.speculative_key = _normalize(text)
+                    sess.speculative_text = ""
+                    _asyncio.create_task(_speculate(call_id, text))
                 return Response(status_code=200)
             sess.last_interim_text = text
             sess.last_interim_at = sess.last_interim_at or time.monotonic()
