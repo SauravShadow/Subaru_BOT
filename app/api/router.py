@@ -733,6 +733,27 @@ async def api_calls_webhook(request: Request, background_tasks: BackgroundTasks)
             telephony.start_transcription(ccid, language=(sess.language if sess else "en"))
             return Response(status_code=200)
 
+        if etype in ("call.speak.started", "call.playback.started"):
+            sess = call_store.get_session(call_id)
+            if sess:
+                sess.is_speaking = True
+            return Response(status_code=200)
+
+        if etype in ("call.speak.ended", "call.playback.ended"):
+            sess = call_store.get_session(call_id)
+            if sess:
+                sess.is_speaking = False
+                # Reset turn dedup now that we've finished speaking, so a repeated
+                # short answer ("yes"/"okay") in a LATER turn isn't dropped. The
+                # trailing is_final for the just-handled turn already arrived while
+                # is_speaking was True, so it was deduped before this reset.
+                sess.responded_text = ""
+                if sess.pending_caller_text:                 # deferred barge-in (Task 7)
+                    pending = sess.pending_caller_text
+                    sess.pending_caller_text = None
+                    await _finalize_turn(call_id, ccid, pending)
+            return Response(status_code=200)
+
         if etype == "call.transcription":
             td = getattr(payload, "transcription_data", None)
             if not td:
