@@ -654,6 +654,9 @@ async def _respond_to_turn(call_id: str, ccid: str, speech: str) -> None:
     sess = call_store.get_session(call_id)
     if not sess:
         return
+    if sess.turn is None:          # normally set by _finalize_turn; guard direct calls
+        sess.turn = TurnTimer()
+        sess.turn.mark("final")
     lang = sess.language
     if any(w in speech.lower() for w in _GOODBYE_WORDS):
         closing_text = ("Thank you. Goodbye!" if sess.direction == "outbound"
