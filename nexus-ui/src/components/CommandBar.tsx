@@ -8,6 +8,8 @@ export function CommandBar() {
   const agents = useNexusStore(s => s.agents)
   const ceoStatus = useNexusStore(s => s.agents['ceo']?.status ?? 'idle')
   const wsStatus = useNexusStore(s => s.wsStatus)
+  const setCallWindowVisible = useNexusStore(s => s.setCallWindowVisible)
+  const activeCall = useNexusStore(s => s.activeCall)
   const [text, setText] = useState('')
   const [target, setTarget] = useState('ceo')
   const [pickerOpen, setPickerOpen] = useState(false)
@@ -140,6 +142,39 @@ export function CommandBar() {
         }}>
           SEND
         </button>
+
+        {(() => {
+          const hasCall = activeCall && activeCall.status !== 'ended'
+          const pulseColor = hasCall
+            ? (activeCall.status === 'connected' ? '#22c55e' : activeCall.status === 'dialing' ? '#3b82f6' : '#f59e0b')
+            : null
+
+          return (
+            <button
+              onClick={() => setCallWindowVisible(true)}
+              title="Open Call Panel"
+              style={{
+                background: pulseColor ? `${pulseColor}14` : 'none',
+                border: `1px solid ${pulseColor ? pulseColor : '#334155'}`,
+                color: pulseColor ? pulseColor : '#94a3b8',
+                borderRadius: 8, padding: '5px 10px', cursor: 'pointer', fontSize: 13,
+                transition: 'all 300ms ease',
+                boxShadow: pulseColor ? `0 0 10px ${pulseColor}66` : 'none',
+                animation: pulseColor ? 'callbar-pulse 1.5s ease-in-out infinite' : 'none',
+              }}>
+              📞
+              {pulseColor && (
+                <style>{`
+                  @keyframes callbar-pulse {
+                    0% { box-shadow: 0 0 4px ${pulseColor}44; }
+                    50% { box-shadow: 0 0 14px ${pulseColor}aa; }
+                    100% { box-shadow: 0 0 4px ${pulseColor}44; }
+                  }
+                `}</style>
+              )}
+            </button>
+          )
+        })()}
       </div>
     </div>
   )

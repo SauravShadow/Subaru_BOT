@@ -25,6 +25,7 @@ import { ErrorFlash } from './ErrorFlash'
 import { BootOverlay } from './BootOverlay'
 import { CommandBar } from './CommandBar'
 import { HudFrame } from './HudFrame'
+import { CallWindow } from './CallWindow'
 import { useNexusStore } from '../store'
 import { AGENT_POSITIONS, workerPosition } from '../types'
 import { useCommandPalette } from '../hooks/useCommandPalette'
@@ -77,6 +78,7 @@ export function NexusScene() {
       <ModelPill />
       <SmartIsland />
       <BrowserViewport />
+      <CallWindow />
       <DesignPreviewPanel />
       <SystemVitals />
       <ErrorFlash />

@@ -262,13 +262,14 @@ async def quick_reply(goal: str, transcript: list, language: str = "en",
         f"Conversation so far:\n{convo}\n\nYour next spoken line:"
     )
 
-    # Primary: Gemini — try models in order until one responds (503/429 are common)
+    # Primary: Gemini — fast + free when healthy. Keep the cascade SHORT (two models,
+    # tight timeout) so a degraded Gemini (429/503 are common on free tier) fails over
+    # to the reliable Claude CLI backstop in bounded time (~6s) instead of burning the
+    # whole turn cycling models. Claude is slower (~6s) so it stays the fallback, not primary.
     if config.GEMINI_API_KEY:
         _GEMINI_MODELS = [
             "gemini-3.5-flash",
             "gemini-2.5-flash",
-            "gemini-2.5-flash-lite",
-            "gemini-flash-latest",
         ]
         try:
             import google.genai as genai
@@ -284,7 +285,7 @@ async def quick_reply(goal: str, transcript: list, language: str = "en",
                         model=_model,
                         contents=prompt,
                     ),
-                    timeout=4.0,
+                    timeout=3.0,
                 )
                 text = (resp.text or "").strip()
                 if text:

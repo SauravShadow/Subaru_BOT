@@ -581,7 +581,7 @@ async def api_call_audio(call_id: str, idx: int):
 
 _GOODBYE_WORDS = {"bye", "goodbye", "thank you", "that's all", "no thanks", "thanks bye"}
 
-_SILENCE_MS = 700  # interim unchanged this long => end of turn
+_SILENCE_MS = config.CALL_SILENCE_MS  # interim unchanged this long => end of turn (tunable via env)
 
 
 def _normalize(text: str) -> str:
@@ -644,7 +644,9 @@ def _arm_silence_timer(call_id: str, ccid: str) -> None:
 
 async def _finalize_turn(call_id: str, ccid: str, speech: str) -> None:
     sess = call_store.get_session(call_id)
-    if not sess:
+    if not sess or sess.status == "ended":
+        # Telnyx flushes a buffered transcript after hangup; replying then hits a
+        # 422 "Call has already ended". Drop late turns instead of speaking to a dead call.
         return
     speech = (speech or "").strip()
     if not speech or _normalize(speech) == _normalize(sess.responded_text):
@@ -652,7 +654,16 @@ async def _finalize_turn(call_id: str, ccid: str, speech: str) -> None:
     sess.responded_text = speech
     sess._backchanneled = False
     if sess.is_speaking:
-        sess.pending_caller_text = speech    # handle when call.speak.ended fires
+        # Barge-in: caller spoke while NEXUS was talking. ACCUMULATE across multiple
+        # finals so earlier parts aren't lost (previously this overwrote, keeping only
+        # the last chunk — the caller's first words vanished). Handled on speak.ended.
+        prev = sess.pending_caller_text or ""
+        if not prev:
+            sess.pending_caller_text = speech
+        elif _normalize(speech) in _normalize(prev):
+            pass                              # duplicate / substring — already captured
+        else:
+            sess.pending_caller_text = f"{prev} {speech}".strip()
         return
     if sess.silence_task is not None:
         sess.silence_task.cancel()
@@ -671,39 +682,47 @@ async def _respond_to_turn(call_id: str, ccid: str, speech: str) -> None:
     if sess.turn is None:          # normally set by _finalize_turn; guard direct calls
         sess.turn = TurnTimer()
         sess.turn.mark("final")
+    from app.agents.call_prep import pick_filler, sanitize_ssml
     lang = sess.language
-    if any(w in speech.lower() for w in _GOODBYE_WORDS):
-        closing_text = ("Thank you. Goodbye!" if sess.direction == "outbound"
-                        else "Thank you for calling. Have a great day! Goodbye.")
-        call_store.add_turn(call_id, "nexus", closing_text)
-        telephony.speak_text(ccid, closing_text, language=lang, call_id=call_id)
-        telephony.hangup_call(ccid)
-        return
-    if sess.speculative_key and sess.speculative_key == _normalize(speech) and sess.speculative_text:
-        reply = sess.speculative_text
+    # `replying` guards against a mid-turn filler's speak.ended prematurely resetting
+    # dedup or draining a queued barge-in (which would let a stale reply talk over it).
+    sess.replying = True
+    try:
+        if any(w in speech.lower() for w in _GOODBYE_WORDS):
+            closing_text = ("Thank you. Goodbye!" if sess.direction == "outbound"
+                            else "Thank you for calling. Have a great day! Goodbye.")
+            call_store.add_turn(call_id, "nexus", closing_text)
+            telephony.speak_text(ccid, closing_text, language=lang, call_id=call_id)
+            telephony.hangup_call(ccid)
+            return
+        # Consume the speculative cache exactly once; clear it either way so an
+        # in-flight or previous-turn speculation can never be served in a later turn.
+        spec_hit = (sess.speculative_key == _normalize(speech) and bool(sess.speculative_text))
+        cached = sess.speculative_text if spec_hit else ""
         sess.speculative_key = sess.speculative_text = ""
+        if spec_hit:
+            sess.turn.mark("llm_done")
+            call_store.add_turn(call_id, "nexus", cached)
+            payload, ptype = sanitize_ssml(cached)
+            telephony.speak_text(ccid, payload, language=lang, call_id=call_id, payload_type=ptype)
+            sess.turn.mark("speak")
+            logger.info("[call %s] %s (speculative hit)", call_id, sess.turn.summary_line())
+            return
+        reply_task = _asyncio.create_task(_live_reply(call_id, speech, ssml=True))
+        done, _pending = await _asyncio.wait({reply_task}, timeout=1.0)
+        if reply_task not in done:
+            filler = pick_filler()
+            call_store.add_turn(call_id, "nexus", filler)
+            telephony.speak_text(ccid, filler, language=lang, call_id=call_id)
+        reply = await reply_task
         sess.turn.mark("llm_done")
         call_store.add_turn(call_id, "nexus", reply)
-        from app.agents.call_prep import sanitize_ssml
         payload, ptype = sanitize_ssml(reply)
         telephony.speak_text(ccid, payload, language=lang, call_id=call_id, payload_type=ptype)
         sess.turn.mark("speak")
-        logger.info("[call %s] %s (speculative hit)", call_id, sess.turn.summary_line())
-        return
-    from app.agents.call_prep import pick_filler, sanitize_ssml
-    reply_task = _asyncio.create_task(_live_reply(call_id, speech, ssml=True))
-    done, _pending = await _asyncio.wait({reply_task}, timeout=1.0)
-    if reply_task not in done:
-        filler = pick_filler()
-        call_store.add_turn(call_id, "nexus", filler)
-        telephony.speak_text(ccid, filler, language=lang, call_id=call_id)
-    reply = await reply_task
-    sess.turn.mark("llm_done")
-    call_store.add_turn(call_id, "nexus", reply)
-    payload, ptype = sanitize_ssml(reply)
-    telephony.speak_text(ccid, payload, language=lang, call_id=call_id, payload_type=ptype)
-    sess.turn.mark("speak")
-    logger.info("[call %s] %s", call_id, sess.turn.summary_line())
+        logger.info("[call %s] %s", call_id, sess.turn.summary_line())
+    finally:
+        sess.replying = False
 
 
 # ── Telnyx Call Control webhook — single event dispatcher ───────────────────────
@@ -786,6 +805,11 @@ async def api_calls_webhook(request: Request, background_tasks: BackgroundTasks)
                 return Response(status_code=200)
             text = (getattr(td, "transcript", "") or "").strip()
             is_final = bool(getattr(td, "is_final", False))
+            # Engines without interim_results (Telnyx native "B", etc.) emit one complete
+            # utterance per event; treat as final so we reply immediately instead of
+            # waiting on the interim-silence timer (which only fires for Google/A interims).
+            if config.TELNYX_TRANSCRIPTION_ENGINE not in ("A", "Google", ""):
+                is_final = True
             sess = call_store.get_session(call_id)
             if not sess or not text:
                 return Response(status_code=200)
@@ -810,7 +834,9 @@ async def api_calls_webhook(request: Request, background_tasks: BackgroundTasks)
             return Response(status_code=200)
 
         if etype == "call.hangup":
-            if call_id and call_store.get_session(call_id):
+            sess = call_store.get_session(call_id) if call_id else None
+            if sess:
+                sess.status = "ended"   # synchronous: blocks late transcripts from replying
                 background_tasks.add_task(
                     call_store.end_session, call_id, "success", "Call ended.")
                 background_tasks.add_task(cleanup_call_audio, call_id)

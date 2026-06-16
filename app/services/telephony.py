@@ -108,22 +108,31 @@ def speak_text(call_control_id: str, text: str, language: str = "en",
 def start_transcription(call_control_id: str, language: str = "en") -> None:
     """Begin streaming STT on the remote party's audio (yields call.transcription events).
 
-    Uses an explicit Google engine with interim_results — the default (unspecified)
-    engine was unreliable (some calls produced no transcription events at all).
-    `language` is normalized to a Telnyx/Google locale (e.g. en -> en-US).
+    Engine is config-driven (`TELNYX_TRANSCRIPTION_ENGINE`, default "B"):
+      - "B"          → Telnyx native engine. Reliable, accurate, low-latency, cheaper.
+                       NO interim_results, so the live loop runs on FINAL transcripts only
+                       (speculation/interim-silence features stay idle; that's fine).
+      - "A"/"Google" → Google engine WITH interim_results. Faster turn-taking BUT on this
+                       account it intermittently emits ZERO events (call greets then goes
+                       silent) — see the 2026-06-16 incidents. Use only if B underperforms.
+      - ""           → Telnyx default (currently Google/A → same flakiness).
+    The external explicit "Google"+model config is avoided entirely — it returned 200 but
+    NEVER emitted events (not entitled).
     """
-    _get_client().calls.actions.start_transcription(
-        call_control_id,
-        transcription_tracks=_TRANSCRIPTION_TRACKS,
-        transcription_engine="Google",
-        transcription_engine_config={
-            "transcription_engine": "Google",
-            "language": _short_lang(language),
-            "interim_results": True,
-            "model": "phone_call",   # tuned for telephony audio
-            "use_enhanced": True,
-        },
-    )
+    engine = config.TELNYX_TRANSCRIPTION_ENGINE
+    kwargs: dict = {"transcription_tracks": _TRANSCRIPTION_TRACKS}
+    if engine:
+        kwargs["transcription_engine"] = engine
+        if engine in ("A", "Google"):       # only Engine A supports interim_results
+            kwargs["transcription_engine_config"] = {
+                "transcription_engine": engine,
+                "language": _short_lang(language),
+                "interim_results": True,
+            }
+    resp = _get_client().calls.actions.start_transcription(call_control_id, **kwargs)
+    logger.info("start_transcription engine=%r tracks=%s -> %s",
+                engine or "default", _TRANSCRIPTION_TRACKS,
+                getattr(getattr(resp, "data", None), "result", resp))
 
 
 def hangup_call(call_control_id: str) -> None:

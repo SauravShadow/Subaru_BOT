@@ -65,8 +65,16 @@ TELNYX_PUBLIC_KEY    = os.environ.get("TELNYX_PUBLIC_KEY",    "")  # webhook Ed2
 TELNYX_CONNECTION_ID = os.environ.get("TELNYX_CONNECTION_ID", "")  # Call Control Application id
 TELNYX_PHONE_NUMBER  = os.environ.get("TELNYX_PHONE_NUMBER",  "")
 TELNYX_VOICE         = os.environ.get("TELNYX_VOICE",         "female")  # Telnyx `speak` voice
+# Transcription engine: "B" = Telnyx native (reliable, accurate, low-latency, cheaper, NO interims);
+# "A"/"Google" = Google (interim_results but intermittently emits ZERO events on this account);
+# "" = Telnyx default. Default to B for reliability after Google went silent mid-deployment (2026-06-16).
+TELNYX_TRANSCRIPTION_ENGINE = os.environ.get("TELNYX_TRANSCRIPTION_ENGINE", "B")
 BASE_URL             = os.environ.get("BASE_URL", "")  # public Cloudflare tunnel URL e.g. https://nexus.example.com
 CALL_BACKCHANNEL     = os.environ.get("CALL_BACKCHANNEL", "") == "1"    # experimental: emit mm-hmm on long turns
+# End-of-turn detection: how long the caller's interim transcript must stay unchanged
+# before we treat the turn as finished. Too low (was 700) cut callers off mid-sentence
+# on natural pauses, replying to a fragment. ~1.2s tolerates normal pauses.
+CALL_SILENCE_MS      = int(os.environ.get("CALL_SILENCE_MS", "1200"))
 
 # Voice
 BARK_SPEAKER = os.environ.get("BARK_SPEAKER", "en-US-GuyNeural")  # edge-tts voice name

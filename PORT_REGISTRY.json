@@ -31,9 +31,9 @@
       "note": "task.saurav-info.xyz"
     },
     "8090": {
-      "subdomain": "habit",
-      "service": "habit-tracker",
-      "note": "habit.saurav-info.xyz"
+      "subdomain": "books",
+      "service": "books-site",
+      "note": ""
     },
     "9000": {
       "subdomain": "stream",
@@ -59,6 +59,11 @@
       "subdomain": "",
       "service": "",
       "note": "freed \u2014 was wrongly assigned to pipeline-test"
+    },
+    "8401": {
+      "subdomain": "books",
+      "service": "books-site",
+      "note": ""
     }
   },
   "subdomains": {
@@ -74,7 +79,8 @@
     "quotes": 8085,
     "ping": 8400,
     "rezero": 8095,
-    "cid": 8600
+    "cid": 8600,
+    "books": 8401
   },
   "reserved_ports": [
     80,

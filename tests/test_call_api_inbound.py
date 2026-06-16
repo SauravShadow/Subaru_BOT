@@ -66,7 +66,7 @@ def test_transcription_drives_reply(client):
     ev.data.payload.transcription_data.is_final = True
 
     with patch("app.api.router.telephony.verify_webhook", return_value=ev), \
-         patch("app.api.router._inbound_agent_reply", new_callable=AsyncMock) as mock_reply, \
+         patch("app.api.router._live_reply", new_callable=AsyncMock) as mock_reply, \
          patch("app.api.router.telephony.speak_text") as mock_speak:
         mock_reply.return_value = "I can help with that."
         resp = _post(client, ev)

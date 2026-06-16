@@ -53,6 +53,7 @@ class CallSession:
     turn: object = None
     speculative_key: str = ""
     speculative_text: str = ""
+    replying: bool = False   # True while a turn's reply (incl. filler) is being produced
 
 
 def _conn(db_path=None) -> sqlite3.Connection:

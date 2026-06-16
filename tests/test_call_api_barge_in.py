@@ -41,3 +41,47 @@ async def test_finalize_defers_while_speaking():
         await router._finalize_turn("bg", "c-bg", "eight pm works")
     assert mock_resp.called is False
     assert s.pending_caller_text == "eight pm works"
+
+
+@pytest.mark.asyncio
+async def test_finalize_accumulates_pending_across_finals_while_speaking():
+    """Multiple finals during AI speech must be kept (accumulated), not overwritten —
+    otherwise earlier parts of what the caller said are lost (the 'left-out' bug)."""
+    from app.api import router
+    from app.services import call_store
+    s = call_store.create_session("bg2", "outbound", "+1", "g", "en", "v")
+    call_store.bind_call_control_id("c-bg2", "bg2")
+    s.is_speaking = True
+    with patch("app.api.router._respond_to_turn") as mock_resp:
+        await router._finalize_turn("bg2", "c-bg2", "i need to reschedule")
+        await router._finalize_turn("bg2", "c-bg2", "to next tuesday")
+    assert mock_resp.called is False
+    assert s.pending_caller_text == "i need to reschedule to next tuesday"
+
+
+@pytest.mark.asyncio
+async def test_finalize_skips_when_call_already_ended():
+    """A late transcript flushed after hangup must NOT try to reply (Telnyx 422
+    'Call has already ended') — guard on session status."""
+    from app.api import router
+    from app.services import call_store
+    s = call_store.create_session("end1", "outbound", "+1", "g", "en", "v")
+    call_store.bind_call_control_id("c-end1", "end1")
+    s.status = "ended"
+    with patch("app.api.router._respond_to_turn") as mock_resp:
+        await router._finalize_turn("end1", "c-end1", "yes it is going good")
+    assert mock_resp.called is False
+
+
+@pytest.mark.asyncio
+async def test_finalize_pending_ignores_duplicate_final_while_speaking():
+    """A repeated/substring final must not double-append."""
+    from app.api import router
+    from app.services import call_store
+    s = call_store.create_session("bg3", "outbound", "+1", "g", "en", "v")
+    call_store.bind_call_control_id("c-bg3", "bg3")
+    s.is_speaking = True
+    with patch("app.api.router._respond_to_turn"):
+        await router._finalize_turn("bg3", "c-bg3", "hello there")
+        await router._finalize_turn("bg3", "c-bg3", "hello there")
+    assert s.pending_caller_text == "hello there"

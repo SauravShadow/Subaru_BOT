@@ -1,5 +1,5 @@
 import { create } from 'zustand'
-import type { AgentState, EdgeState, Step, Checkpoint, WorkQueueItem, Notification, WsModel, BrowserView } from './types'
+import type { AgentState, EdgeState, Step, Checkpoint, WorkQueueItem, Notification, WsModel, BrowserView, ActiveCall } from './types'
 
 const WORKER_IDS = ['backend', 'frontend', 'qa', 'devops', 'browser', 'call_agent']
 
@@ -40,9 +40,13 @@ interface NexusStore {
   pendingApprovals: number
   lastErrorTs: number | null
   opsRequest: { tab: 'routines' | 'skills' | 'approvals' | 'email' | 'team'; ts: number } | null
+  callWindowVisible: boolean
+  activeCall: ActiveCall | null
 
   selectAgent: (id: string | null) => void
   openOps: (tab: 'routines' | 'skills' | 'approvals' | 'email' | 'team') => void
+  setCallWindowVisible: (v: boolean) => void
+  setActiveCall: (c: ActiveCall | null | ((prev: ActiveCall | null) => ActiveCall | null)) => void
   setWsStatus: (s: 'connected' | 'offline') => void
   resetAgentStatus: (id: string) => void
   setIslandExpanded: (v: boolean) => void
@@ -72,9 +76,13 @@ export const useNexusStore = create<NexusStore>((set) => ({
   pendingApprovals: 0,
   lastErrorTs: null,
   opsRequest: null,
+  callWindowVisible: false,
+  activeCall: null,
 
   selectAgent: (id) => set({ selectedAgent: id }),
   openOps: (tab) => set({ opsRequest: { tab, ts: Date.now() } }),
+  setCallWindowVisible: (v) => set({ callWindowVisible: v }),
+  setActiveCall: (c: any) => set(state => ({ activeCall: typeof c === 'function' ? c(state.activeCall) : c })),
   setWsStatus: (s) => set({ wsStatus: s }),
   resetAgentStatus: (id) => set(state => ({
     agents: { ...state.agents, [id]: { ...state.agents[id], status: 'idle' } }

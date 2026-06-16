@@ -56,6 +56,20 @@ export interface BrowserView {
   ts: number
 }
 
+export interface TranscriptTurn {
+  speaker: string
+  text: string
+}
+
+export interface ActiveCall {
+  call_id: string
+  number: string
+  goal: string
+  status: 'prep' | 'dialing' | 'connected' | 'ended'
+  transcript: TranscriptTurn[]
+  summary?: string
+}
+
 export const AGENT_POSITIONS: Record<string, [number, number, number]> = {
   ceo:      [0,  0.5,  4],
   backend:  [-3, 0,   -1],

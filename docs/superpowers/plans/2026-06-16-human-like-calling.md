@@ -529,6 +529,11 @@ In `app/api/router.py`, inside the `try:` dispatch, add before the `call.transcr
             sess = call_store.get_session(call_id)
             if sess:
                 sess.is_speaking = False
+                # Reset turn dedup now that we've finished speaking, so a repeated
+                # short answer ("yes"/"okay") in a LATER turn isn't dropped. The
+                # trailing is_final for the just-handled turn already arrived while
+                # is_speaking was True, so it was deduped before this reset.
+                sess.responded_text = ""
                 if sess.pending_caller_text:                 # deferred barge-in (Task 7)
                     pending = sess.pending_caller_text
                     sess.pending_caller_text = None
@@ -738,28 +743,33 @@ In `_respond_to_turn`, before the filler/LLM block, add a cache hit path:
         logger.info("[call %s] %s (speculative hit)", call_id, sess.turn.summary_line())
         return
 ```
-In the interim handler (Task 4 `call.transcription` not-final branch), after `_arm_silence_timer`, add speculative priming when the interim is stable a little while:
+In the interim handler (Task 4 `call.transcription` not-final branch), trigger speculation when the interim **repeats** (caller paused → text stable), captured by comparing to the previous interim BEFORE overwriting it. Restructure the not-final branch:
 ```python
-                now = time.monotonic()
-                if (now - sess.last_interim_at) * 1000 >= 400 and not sess.speculative_key:
+            if not is_final:
+                prev = sess.last_interim_text
+                sess.last_interim_text = text
+                sess.last_interim_at = time.monotonic()
+                _arm_silence_timer(call_id, ccid)
+                # Speculative: same text seen twice in a row (a pause) and not yet
+                # speculated -> pre-generate the reply so the final is instant.
+                if (text and _normalize(text) == _normalize(prev)
+                        and sess.speculative_key != _normalize(text)):
                     sess.speculative_key = _normalize(text)
+                    sess.speculative_text = ""
                     _asyncio.create_task(_speculate(call_id, text))
+                return Response(status_code=200)
 ```
-Add `_speculate`:
+Add `_speculate` (uses ssml=True so the cached reply matches the normal path):
 ```python
 async def _speculate(call_id: str, text: str) -> None:
-    sess = call_store.get_session(call_id)
-    if not sess:
-        return
     try:
-        reply = await _live_reply(call_id, text)
+        reply = await _live_reply(call_id, text, ssml=True)
     except Exception:
         return
-    sess2 = call_store.get_session(call_id)
-    if sess2 and sess2.speculative_key == _normalize(text):
-        sess2.speculative_text = reply
+    sess = call_store.get_session(call_id)
+    if sess and sess.speculative_key == _normalize(text):
+        sess.speculative_text = reply
 ```
-Note the interim handler sets `last_interim_at` *before* this check, so use the prior value: guard with a separate `sess.last_interim_text == text` stability check instead of recomputing the delta if needed.
 
 - [ ] **Step 4: Run tests**
 Run: `docker exec -w /app virtual-company python -m pytest tests/test_call_humanize.py -v`

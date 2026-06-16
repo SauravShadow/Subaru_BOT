@@ -70,6 +70,30 @@ export default function CallPanel() {
     transcriptEndRef.current?.scrollIntoView({ behavior: 'smooth' })
   }, [activeCall?.transcript])
 
+  // Auto-detect any active call started anywhere (agent, CLI, another tab).
+  // Poll /api/calls/active every 3s. If a call appears that we're not already
+  // tracking, populate activeCall so the live view lights up automatically.
+  useEffect(() => {
+    const timer = setInterval(async () => {
+      try {
+        const r = await fetch('/api/calls/active')
+        const list: Array<{ call_id: string; number: string; goal: string; status: string; direction: string }> = await r.json()
+        if (list.length === 0) return
+        const first = list[0]
+        setActiveCall(prev => {
+          // Already tracking this call — don't reset transcript
+          if (prev && prev.call_id === first.call_id) return prev
+          // A new/different call appeared — start tracking it
+          if (!prev || prev.status === 'ended') {
+            return { call_id: first.call_id, number: first.number, goal: first.goal, status: first.status, transcript: [] }
+          }
+          return prev
+        })
+      } catch { /* ignore — network blip */ }
+    }, 3000)
+    return () => clearInterval(timer)
+  }, [])
+
   // Live-poll the active call so status (dialing → connected → ended) and the
   // conversation transcript stream in real time.
   useEffect(() => {
@@ -177,13 +201,35 @@ export default function CallPanel() {
 
       {/* Active call live view */}
       {activeCall && (
-        <div style={{ background: '#1e293b', borderRadius: 8, padding: 16, marginBottom: 20, border: '1px solid #22c55e' }}>
-          <div style={{ marginBottom: 10, fontSize: 13, color: '#94a3b8' }}>
-            <StatusDot status={activeCall.status} />
-            <strong style={{ color: '#e2e8f0' }}>{activeCall.number}</strong>
-            {' — '}{statusLabel[activeCall.status] ?? activeCall.status}
+        <div style={{ background: '#1e293b', borderRadius: 8, padding: 16, marginBottom: 20, border: `1px solid ${activeCall.status === 'connected' ? '#22c55e' : activeCall.status === 'ended' ? '#475569' : '#3b82f6'}` }}>
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 10 }}>
+            <div style={{ fontSize: 13, color: '#94a3b8' }}>
+              <StatusDot status={activeCall.status} />
+              <strong style={{ color: '#e2e8f0' }}>{activeCall.number}</strong>
+              {' — '}{statusLabel[activeCall.status] ?? activeCall.status}
+              {activeCall.status !== 'ended' && (
+                <span style={{ marginLeft: 8, fontSize: 11, background: '#0f172a', color: '#64748b', padding: '2px 6px', borderRadius: 4, border: '1px solid #334155' }}>
+                  LIVE
+                </span>
+              )}
+            </div>
+            <button
+              onClick={() => { setActiveCall(null); fetchHistory() }}
+              style={{ background: 'transparent', border: 'none', color: '#475569', cursor: 'pointer', fontSize: 16, padding: '0 4px', lineHeight: 1 }}
+              title="Dismiss"
+            >✕</button>
           </div>
+          {activeCall.goal && (
+            <div style={{ fontSize: 12, color: '#64748b', marginBottom: 10, fontStyle: 'italic', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+              🎯 {activeCall.goal}
+            </div>
+          )}
           <div style={{ maxHeight: 220, overflowY: 'auto' }}>
+            {activeCall.transcript.length === 0 && activeCall.status !== 'ended' && (
+              <div style={{ color: '#475569', fontSize: 12, fontStyle: 'italic', padding: '6px 0' }}>
+                ⏳ Waiting for conversation...
+              </div>
+            )}
             {activeCall.transcript.map((t, i) => (
               <div key={i} style={{ marginBottom: 6, fontSize: 13 }}>
                 <span style={{ color: t.speaker === 'nexus' ? '#22c55e' : '#94a3b8', marginRight: 6 }}>
@@ -201,6 +247,7 @@ export default function CallPanel() {
           </div>
         </div>
       )}
+
 
       {/* Search + filters */}
       <div style={{ marginBottom: 12, display: 'flex', gap: 8 }}>

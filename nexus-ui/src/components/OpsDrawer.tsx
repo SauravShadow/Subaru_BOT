@@ -1,9 +1,7 @@
-// nexus-ui/src/components/OpsDrawer.tsx
 import { useState, useEffect, useCallback } from 'react'
 import { useNexusStore } from '../store'
-import CallPanel from './CallPanel'
 
-type OpsTab = 'routines' | 'skills' | 'approvals' | 'email' | 'team' | 'calls'
+type OpsTab = 'routines' | 'skills' | 'approvals' | 'email' | 'team'
 
 interface Routine {
   id: string
@@ -35,10 +33,6 @@ interface AgentInfo { name: string; title: string; description: string }
 
 const ACCENT = '#00f0ff'
 
-const routineInputStyle = {
-  background: '#0f172a', border: '1px solid #334155', borderRadius: 5,
-  color: '#e2e8f0', padding: '5px 8px', fontSize: 11, outline: 'none', width: '100%',
-} as const
 
 function TabButton({ label, active, onClick }: { label: string; active: boolean; onClick: () => void }) {
   return (
@@ -49,13 +43,14 @@ function TabButton({ label, active, onClick }: { label: string; active: boolean;
         border: 'none',
         borderBottom: active ? `2px solid ${ACCENT}` : '2px solid transparent',
         color: active ? ACCENT : '#64748b',
-        padding: '6px 14px',
-        fontSize: 11,
+        padding: '6px 8px',
+        fontSize: 10,
         fontFamily: 'Orbitron, sans-serif',
-        letterSpacing: '0.08em',
+        letterSpacing: '0.05em',
         cursor: 'pointer',
         transition: 'all 150ms',
         flexShrink: 0,
+        whiteSpace: 'nowrap',
       }}
     >
       {label}
@@ -81,12 +76,34 @@ function StatusBadge({ status }: { status: string | null }) {
   )
 }
 
+function DrawerInput(props: React.InputHTMLAttributes<HTMLInputElement>) {
+  const [focused, setFocused] = useState(false)
+  return (
+    <input
+      {...props}
+      onFocus={(e) => { setFocused(true); props.onFocus?.(e) }}
+      onBlur={(e) => { setFocused(false); props.onBlur?.(e) }}
+      style={{
+        background: '#0a101e',
+        border: `1px solid ${focused ? `${ACCENT}88` : '#1e293b'}`,
+        borderRadius: 8,
+        color: '#e2e8f0',
+        padding: '7px 10px',
+        fontSize: 11,
+        outline: 'none',
+        width: '100%',
+        fontFamily: 'Inter, sans-serif',
+        transition: 'all 200ms ease',
+        boxShadow: focused ? `0 0 10px ${ACCENT}22` : 'none',
+        boxSizing: 'border-box',
+        ...props.style,
+      }}
+    />
+  )
+}
+
 function HireForm({ onHired }: { onHired: () => void }) {
   const [form, setForm] = useState({ id: '', name: '', role: '', stack: '' })
-  const inputStyle = {
-    background: '#0f172a', border: '1px solid #334155', borderRadius: 5,
-    color: '#e2e8f0', padding: '5px 8px', fontSize: 11, outline: 'none', width: '100%',
-  } as const
   const hire = async () => {
     if (!form.id || !form.name || !form.role) return
     await fetch('/api/hire', {
@@ -100,10 +117,10 @@ function HireForm({ onHired }: { onHired: () => void }) {
   return (
     <div style={{ background: '#0f172a', border: '1px dashed #334155', borderRadius: 8, padding: 12, display: 'flex', flexDirection: 'column', gap: 6 }}>
       <span style={{ fontFamily: 'Orbitron, sans-serif', color: '#64748b', fontSize: 10, letterSpacing: '0.1em' }}>HIRE CONTRACTOR</span>
-      <input style={inputStyle} placeholder="id (e.g. data_analyst)" value={form.id} onChange={e => setForm({ ...form, id: e.target.value })} />
-      <input style={inputStyle} placeholder="Name" value={form.name} onChange={e => setForm({ ...form, name: e.target.value })} />
-      <input style={inputStyle} placeholder="Role (e.g. Data Analyst)" value={form.role} onChange={e => setForm({ ...form, role: e.target.value })} />
-      <input style={inputStyle} placeholder="Stack (e.g. pandas, SQL)" value={form.stack} onChange={e => setForm({ ...form, stack: e.target.value })} />
+      <DrawerInput placeholder="id (e.g. data_analyst)" value={form.id} onChange={e => setForm({ ...form, id: e.target.value })} />
+      <DrawerInput placeholder="Name" value={form.name} onChange={e => setForm({ ...form, name: e.target.value })} />
+      <DrawerInput placeholder="Role (e.g. Data Analyst)" value={form.role} onChange={e => setForm({ ...form, role: e.target.value })} />
+      <DrawerInput placeholder="Stack (e.g. pandas, SQL)" value={form.stack} onChange={e => setForm({ ...form, stack: e.target.value })} />
       <button onClick={hire} style={{ background: '#22c55e18', border: '1px solid #22c55e44', color: '#22c55e', borderRadius: 5, padding: '4px 0', fontSize: 11, cursor: 'pointer', fontFamily: 'Orbitron, sans-serif' }}>+ HIRE</button>
     </div>
   )
@@ -126,6 +143,7 @@ export function OpsDrawer({ open, onClose, requestedTab }: {
   const [agents, setAgents] = useState<Record<string, AgentInfo>>({})
   const [loading, setLoading] = useState(false)
   const [runningId, setRunningId] = useState<string | null>(null)
+  const [expandedDiffs, setExpandedDiffs] = useState<Record<string, boolean>>({})
 
   const fetchAll = useCallback(() => {
     if (!open) return
@@ -270,7 +288,6 @@ export function OpsDrawer({ open, onClose, requestedTab }: {
         <TabButton label={`APPROVALS${approvalEntries.length > 0 ? ` (${approvalEntries.length})` : ''}`} active={tab === 'approvals'} onClick={() => setTab('approvals')} />
         <TabButton label="EMAIL" active={tab === 'email'} onClick={() => setTab('email')} />
         <TabButton label="TEAM" active={tab === 'team'} onClick={() => setTab('team')} />
-        <TabButton label="📞 CALLS" active={tab === 'calls'} onClick={() => setTab('calls')} />
       </div>
 
       {/* Content */}
@@ -285,11 +302,11 @@ export function OpsDrawer({ open, onClose, requestedTab }: {
           <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
             <div style={{ background: '#0f172a', border: '1px dashed #334155', borderRadius: 8, padding: 12, display: 'flex', flexDirection: 'column', gap: 6 }}>
               <span style={{ fontFamily: 'Orbitron, sans-serif', color: '#64748b', fontSize: 10, letterSpacing: '0.1em' }}>NEW ROUTINE</span>
-              <input style={routineInputStyle} placeholder="id (e.g. daily_report)" value={newRoutine.id} onChange={e => setNewRoutine({ ...newRoutine, id: e.target.value })} />
-              <input style={routineInputStyle} placeholder="Name" value={newRoutine.name} onChange={e => setNewRoutine({ ...newRoutine, name: e.target.value })} />
-              <input style={routineInputStyle} placeholder="Cron schedule (e.g. 0 9 * * *)" value={newRoutine.schedule} onChange={e => setNewRoutine({ ...newRoutine, schedule: e.target.value })} />
-              <input style={routineInputStyle} placeholder="Agent (e.g. ceo)" value={newRoutine.agent} onChange={e => setNewRoutine({ ...newRoutine, agent: e.target.value })} />
-              <input style={routineInputStyle} placeholder="Prompt" value={newRoutine.prompt} onChange={e => setNewRoutine({ ...newRoutine, prompt: e.target.value })} />
+              <DrawerInput placeholder="id (e.g. daily_report)" value={newRoutine.id} onChange={e => setNewRoutine({ ...newRoutine, id: e.target.value })} />
+              <DrawerInput placeholder="Name" value={newRoutine.name} onChange={e => setNewRoutine({ ...newRoutine, name: e.target.value })} />
+              <DrawerInput placeholder="Cron schedule (e.g. 0 9 * * *)" value={newRoutine.schedule} onChange={e => setNewRoutine({ ...newRoutine, schedule: e.target.value })} />
+              <DrawerInput placeholder="Agent (e.g. ceo)" value={newRoutine.agent} onChange={e => setNewRoutine({ ...newRoutine, agent: e.target.value })} />
+              <DrawerInput placeholder="Prompt" value={newRoutine.prompt} onChange={e => setNewRoutine({ ...newRoutine, prompt: e.target.value })} />
               <button onClick={createRoutine} style={{
                 background: `${ACCENT}18`, border: `1px solid ${ACCENT}44`, color: ACCENT,
                 borderRadius: 5, padding: '4px 0', fontSize: 11, cursor: 'pointer', fontFamily: 'Orbitron, sans-serif',
@@ -486,21 +503,28 @@ export function OpsDrawer({ open, onClose, requestedTab }: {
                   Requested by <span style={{ color: '#94a3b8' }}>{a.agent}</span>
                 </div>
                 {a.diff && (
-                  <pre style={{
-                    background: '#020408',
-                    border: '1px solid #1e293b',
-                    borderRadius: 4,
-                    padding: '8px',
-                    fontSize: 10,
-                    color: '#94a3b8',
-                    fontFamily: 'JetBrains Mono, monospace',
-                    overflowX: 'auto',
-                    maxHeight: 120,
-                    whiteSpace: 'pre',
-                    marginBottom: 8,
-                  }}>
-                    {a.diff.slice(0, 500)}{a.diff.length > 500 ? '\n… (truncated)' : ''}
-                  </pre>
+                  <div style={{ position: 'relative', marginBottom: 8 }}>
+                    <pre
+                      onClick={() => setExpandedDiffs(prev => ({ ...prev, [id]: !prev[id] }))}
+                      style={{
+                        background: '#020408',
+                        border: `1px solid ${expandedDiffs[id] ? '#f59e0b66' : '#1e293b'}`,
+                        borderRadius: 4,
+                        padding: '8px',
+                        fontSize: 10,
+                        color: '#94a3b8',
+                        fontFamily: 'JetBrains Mono, monospace',
+                        overflowX: 'auto',
+                        overflowY: 'auto',
+                        maxHeight: expandedDiffs[id] ? 500 : 120,
+                        whiteSpace: 'pre',
+                        cursor: 'pointer',
+                        transition: 'max-height 200ms ease, border-color 200ms ease',
+                      }}
+                    >
+                      {expandedDiffs[id] ? a.diff : (a.diff.length > 500 ? `${a.diff.slice(0, 500)}\n\n… (click to expand)` : a.diff)}
+                    </pre>
+                  </div>
                 )}
                 <div style={{ display: 'flex', gap: 8 }}>
                   <button
@@ -541,7 +565,7 @@ export function OpsDrawer({ open, onClose, requestedTab }: {
           </div>
         )}
 
-        {tab === 'calls' && <CallPanel />}
+
       </div>
 
       {/* Footer refresh */}
