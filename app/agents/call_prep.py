@@ -270,9 +270,13 @@ async def quick_reply(goal: str, transcript: list, language: str = "en",
             "gemini-2.5-flash-lite",
             "gemini-flash-latest",
         ]
-        import google.genai as genai
-        _client = genai.Client(api_key=config.GEMINI_API_KEY)
-        for _model in _GEMINI_MODELS:
+        try:
+            import google.genai as genai
+            _client = genai.Client(api_key=config.GEMINI_API_KEY)
+        except Exception as exc:
+            logger.warning("quick_reply Gemini client init failed: %s", exc)
+            _client = None
+        for _model in (_GEMINI_MODELS if _client is not None else []):
             try:
                 resp = await asyncio.wait_for(
                     asyncio.to_thread(
