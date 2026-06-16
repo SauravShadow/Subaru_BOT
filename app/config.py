@@ -66,6 +66,7 @@ TELNYX_CONNECTION_ID = os.environ.get("TELNYX_CONNECTION_ID", "")  # Call Contro
 TELNYX_PHONE_NUMBER  = os.environ.get("TELNYX_PHONE_NUMBER",  "")
 TELNYX_VOICE         = os.environ.get("TELNYX_VOICE",         "female")  # Telnyx `speak` voice
 BASE_URL             = os.environ.get("BASE_URL", "")  # public Cloudflare tunnel URL e.g. https://nexus.example.com
+CALL_BACKCHANNEL     = os.environ.get("CALL_BACKCHANNEL", "") == "1"    # experimental: emit mm-hmm on long turns
 
 # Voice
 BARK_SPEAKER = os.environ.get("BARK_SPEAKER", "en-US-GuyNeural")  # edge-tts voice name

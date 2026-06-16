@@ -650,6 +650,7 @@ async def _finalize_turn(call_id: str, ccid: str, speech: str) -> None:
     if not speech or _normalize(speech) == _normalize(sess.responded_text):
         return
     sess.responded_text = speech
+    sess._backchanneled = False
     if sess.is_speaking:
         sess.pending_caller_text = speech    # handle when call.speak.ended fires
         return
@@ -793,6 +794,10 @@ async def api_calls_webhook(request: Request, background_tasks: BackgroundTasks)
                 sess.last_interim_text = text
                 sess.last_interim_at = time.monotonic()
                 _arm_silence_timer(call_id, ccid)
+                if (config.CALL_BACKCHANNEL and not sess.is_speaking
+                        and len(text.split()) >= 8 and not getattr(sess, "_backchanneled", False)):
+                    sess._backchanneled = True
+                    telephony.speak_text(ccid, "mm-hmm", language=sess.language, call_id=call_id)
                 if (text and _normalize(text) == _normalize(prev)
                         and sess.speculative_key != _normalize(text)):
                     sess.speculative_key = _normalize(text)

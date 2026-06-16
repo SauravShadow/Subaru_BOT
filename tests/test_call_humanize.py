@@ -52,3 +52,8 @@ async def test_finalize_uses_speculative_cache(monkeypatch):
         await router._respond_to_turn("spec", "c-spec", "book a table")
     assert calls["llm"] == 0
     assert "Sure, for what time" in str(mock_speak.call_args)
+
+
+def test_backchannel_disabled_by_default():
+    import app.config as cfg
+    assert getattr(cfg, "CALL_BACKCHANNEL", False) in (False, "0", "", None)
