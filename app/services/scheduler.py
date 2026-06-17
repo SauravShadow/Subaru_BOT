@@ -63,7 +63,7 @@ def _append_run_log(routine_id: str, status: str, output: str) -> None:
     logs.append({
         "routine_id": routine_id,
         "status":     status,
-        "output":     output[:2000],
+        "output":     output[:config.ROUTINE_LOG_MAX_CHARS],
         "timestamp":  datetime.now().isoformat(),
     })
     ROUTINE_LOGS_FILE.write_text(

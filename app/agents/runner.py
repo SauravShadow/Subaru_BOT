@@ -29,7 +29,7 @@ logger = logging.getLogger(__name__)
 Sender = Callable[[dict], Awaitable[None]]
 
 
-def _truncate_content(text: str, max_chars: int = 8000) -> str:
+def _truncate_content(text: str, max_chars: int = config.MAX_TOOL_OUTPUT_CHARS) -> str:
     if not isinstance(text, str):
         text = str(text)
     if len(text) <= max_chars:
@@ -38,7 +38,7 @@ def _truncate_content(text: str, max_chars: int = 8000) -> str:
     return text[:half] + f"\n... [Truncated {len(text) - max_chars} characters of old output] ...\n" + text[-half:]
 
 
-_ASK_TIMEOUT: float = 120.0   # seconds before inter-agent ask times out
+_ASK_TIMEOUT: float = config.ASK_TIMEOUT   # seconds before inter-agent ask times out
 
 _ceo_context_cache: tuple = (0.0, "")
 _CEO_CONTEXT_TTL = 60.0

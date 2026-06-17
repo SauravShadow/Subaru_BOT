@@ -1,6 +1,43 @@
 """Centralised configuration — reads all env vars once at import time."""
 import os
+import logging
 from pathlib import Path
+
+logger = logging.getLogger(__name__)
+
+
+def _env_int(name: str, default: int) -> int:
+    raw = os.environ.get(name)
+    if raw is None:
+        return default
+    try:
+        return int(raw)
+    except ValueError:
+        logger.warning("Bad int for %s=%r; using default %d", name, raw, default)
+        return default
+
+
+def _env_float(name: str, default: float) -> float:
+    raw = os.environ.get(name)
+    if raw is None:
+        return default
+    try:
+        return float(raw)
+    except ValueError:
+        logger.warning("Bad float for %s=%r; using default %s", name, raw, default)
+        return default
+
+
+def _env_bool(name: str, default: bool) -> bool:
+    raw = os.environ.get(name)
+    if raw is None:
+        return default
+    return raw.strip().lower() in ("1", "true", "yes", "on")
+
+
+def _env_str(name: str, default: str) -> str:
+    return os.environ.get(name, default)
+
 
 # Workspace
 WORK_DIR = Path(os.environ.get("WORK_DIR", Path(__file__).parent.parent))
@@ -44,7 +81,10 @@ IMAP_PASS     = os.environ.get("IMAP_PASS", SMTP_PASS)
 # Runtime
 USER_EMAIL  = os.environ.get("USER_EMAIL", "sauravsubaru@gmail.com")
 MAX_STORAGE = float(os.environ.get("MAX_STORAGE_GB", "10"))
-MAX_HISTORY      = 30
+MAX_HISTORY      = _env_int("MAX_HISTORY", 30)
+MAX_TOOL_OUTPUT_CHARS = _env_int("MAX_TOOL_OUTPUT_CHARS", 32000)  # agent tool-output truncation cap
+ROUTINE_LOG_MAX_CHARS = _env_int("ROUTINE_LOG_MAX_CHARS", 10000)  # routine run-log output cap
+ASK_TIMEOUT           = _env_float("ASK_TIMEOUT", 120.0)          # inter-agent ask timeout (s)
 COMPACT_THRESHOLD = int(os.environ.get("COMPACT_THRESHOLD", "20"))   # messages before auto-compact
 COMPACT_KEEP      = int(os.environ.get("COMPACT_KEEP",      "6"))    # recent messages to keep verbatim
 
@@ -74,7 +114,7 @@ CALL_BACKCHANNEL     = os.environ.get("CALL_BACKCHANNEL", "") == "1"    # experi
 # End-of-turn detection: how long the caller's interim transcript must stay unchanged
 # before we treat the turn as finished. Too low (was 700) cut callers off mid-sentence
 # on natural pauses, replying to a fragment. ~1.2s tolerates normal pauses.
-CALL_SILENCE_MS      = int(os.environ.get("CALL_SILENCE_MS", "1200"))
+CALL_SILENCE_MS      = _env_int("CALL_SILENCE_MS", 1200)
 
 # Voice
 BARK_SPEAKER = os.environ.get("BARK_SPEAKER", "en-US-GuyNeural")  # edge-tts voice name
