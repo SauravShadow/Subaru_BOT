@@ -121,6 +121,7 @@ BARK_SPEAKER = os.environ.get("BARK_SPEAKER", "en-US-GuyNeural")  # edge-tts voi
 
 # Browser automation sidecar
 BROWSER_SVC_URL = os.environ.get("BROWSER_SVC_URL", "http://browser-svc:9002")
+SIDECAR_URL = _env_str("SIDECAR_URL", "http://host.docker.internal:3030")  # SRE operations sidecar
 
 
 def get_credential(name: str) -> str:

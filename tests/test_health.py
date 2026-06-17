@@ -24,4 +24,6 @@ async def test_health_reports_all_services(monkeypatch):
     assert body["app"] is True
     assert body["bark"] is True
     assert body["browser"] is False
-    assert "email" in body
+    assert body["sidecar"] is False        # new: probed via registry
+    assert "email" in body                 # config-derived flag
+    assert "telephony" in body             # new: config-derived flag

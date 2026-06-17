@@ -537,18 +537,25 @@ async def _probe_service(url: str) -> bool:
         return False
 
 
+_HEALTH_SERVICES = {
+    "bark":    f"{config.BARK_SVC_URL}/health",
+    "browser": f"{config.BROWSER_SVC_URL}/health",
+    "sidecar": f"{config.SIDECAR_URL}/health",
+}
+
+
 @router.get("/api/health")
 async def api_health():
-    bark_ok, browser_ok = await asyncio.gather(
-        _probe_service(f"{config.BARK_SVC_URL}/health"),
-        _probe_service(f"{config.BROWSER_SVC_URL}/health"),
+    names = list(_HEALTH_SERVICES)
+    results = await asyncio.gather(
+        *(_probe_service(_HEALTH_SERVICES[n]) for n in names)
     )
-    return {
-        "app":     True,
-        "bark":    bark_ok,
-        "browser": browser_ok,
-        "email":   all([config.SMTP_USER, config.SMTP_PASS, config.USER_EMAIL]),
-    }
+    health = {"app": True}
+    health.update(dict(zip(names, results)))
+    health["email"]     = all([config.SMTP_USER, config.SMTP_PASS, config.USER_EMAIL])
+    health["telephony"] = all([config.TELNYX_API_KEY, config.TELNYX_CONNECTION_ID,
+                               config.TELNYX_PHONE_NUMBER])
+    return health
 
 
 # ── Outbound call — user-initiated ─────────────────────────────────────────────
