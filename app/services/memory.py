@@ -99,6 +99,23 @@ def get_relevant_memories(agent_id: str, query: str, limit: int = 5) -> list[str
         return []
 
 
+def get_shared_memories(limit: int = 3) -> list[str]:
+    """Top shared memories by importance — ALWAYS injectable (no keyword match needed)."""
+    try:
+        with _conn() as c:
+            rows = c.execute("""
+                SELECT content
+                FROM   memories
+                WHERE  agent_id = 'shared'
+                ORDER  BY importance DESC, last_hit_at DESC
+                LIMIT  ?
+            """, (limit,)).fetchall()
+            return [r["content"] for r in rows]
+    except sqlite3.OperationalError as exc:
+        logger.warning("shared memory query failed: %s", exc)
+        return []
+
+
 def save_preference(key: str, value: str) -> None:
     with _conn() as c:
         c.execute(

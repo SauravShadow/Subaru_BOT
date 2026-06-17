@@ -95,3 +95,34 @@ def test_query_with_commas_does_not_error(tmp_path, monkeypatch):
     memory.save_memory("ceo", "deployed trading dashboard on port 8002")
     rows = memory.get_relevant_memories("ceo", "trading, dashboard: port")
     assert rows and "trading" in rows[0]
+
+
+def test_get_shared_memories_ranks_by_importance(mem):
+    mem.save_memory("shared", "Company mission: ship reliable agents", importance=0.9)
+    mem.save_memory("shared", "Minor shared note", importance=0.2)
+    results = mem.get_shared_memories(limit=5)
+    assert any("mission" in r for r in results)
+    assert results[0] == "Company mission: ship reliable agents"  # highest importance first
+
+
+def test_get_shared_memories_ignores_non_shared(mem):
+    mem.save_memory("ceo", "CEO-only private note", importance=0.9)
+    mem.save_memory("shared", "Shared broadcast note", importance=0.5)
+    results = mem.get_shared_memories(limit=5)
+    assert any("broadcast" in r for r in results)
+    assert not any("private" in r for r in results)
+
+
+def test_get_shared_memories_no_keyword_needed(mem):
+    # Unlike get_relevant_memories, this needs no query/keyword match.
+    mem.save_memory("shared", "Zzxq unrelated token", importance=0.7)
+    results = mem.get_shared_memories(limit=5)
+    assert any("Zzxq" in r for r in results)
+
+
+def test_context_block_includes_shared_without_keyword(mem, monkeypatch):
+    import app.agents.runner as runner
+    monkeypatch.setattr(runner, "mem_svc", mem)
+    mem.save_memory("shared", "Always-on fact: prefer Engine B for calls", importance=0.9)
+    block = runner._build_context_block("backend", "totally unrelated query about widgets")
+    assert "Always-on fact" in block

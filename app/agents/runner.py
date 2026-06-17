@@ -136,9 +136,16 @@ def _build_context_block(agent_id: str, user_query: str) -> str:
     """Live context injected into every agent prompt."""
     try:
         import datetime as _dt
-        memories  = mem_svc.get_relevant_memories(agent_id, user_query, limit=5)
+        matched = mem_svc.get_relevant_memories(agent_id, user_query, limit=5)
+        shared  = mem_svc.get_shared_memories(limit=3)
+        # Always include top shared facts; dedupe against keyword matches, preserve order.
+        seen, merged = set(), []
+        for m in matched + shared:
+            if m not in seen:
+                seen.add(m)
+                merged.append(m)
         now_str   = _dt.datetime.now(_IST).strftime("%A %d %B %Y, %H:%M IST")
-        mem_lines = "\n".join(f"  - {m}" for m in memories) or "  (none yet)"
+        mem_lines = "\n".join(f"  - {m}" for m in merged) or "  (none yet)"
         return (
             f"\nLIVE CONTEXT [{now_str}]:\n"
             f"Relevant memories:\n{mem_lines}\n"
