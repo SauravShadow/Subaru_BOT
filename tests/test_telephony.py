@@ -111,18 +111,29 @@ def test_verify_webhook_parses_unverified_without_key(monkeypatch):
     assert not mock_verify.called             # no key → no verification
 
 
-def test_start_transcription_uses_phone_model():
+def test_start_transcription_uses_telnyx_engine_b(monkeypatch):
+    # Default engine is Telnyx native "B" (reliable; no interim_results, no config dict).
+    monkeypatch.setattr(telephony.config, "TELNYX_TRANSCRIPTION_ENGINE", "B")
     mock_client = MagicMock()
     with patch("app.services.telephony._get_client", return_value=mock_client):
         telephony.start_transcription("ctrl-1", language="en")
     kwargs = mock_client.calls.actions.start_transcription.call_args[1]
-    assert kwargs["transcription_engine"] == "Google"
-    cfg = kwargs["transcription_engine_config"]
-    assert cfg["language"] == "en"
-    assert cfg["interim_results"] is True
-    assert cfg["model"] == "phone_call"
-    assert cfg["use_enhanced"] is True
+    assert kwargs["transcription_engine"] == "B"
     assert kwargs["transcription_tracks"] == "inbound"
+    assert "transcription_engine_config" not in kwargs   # B takes no engine config
+
+
+def test_start_transcription_google_engine_sends_interim_config(monkeypatch):
+    # Engine A/Google path still passes interim_results + short language code.
+    monkeypatch.setattr(telephony.config, "TELNYX_TRANSCRIPTION_ENGINE", "A")
+    mock_client = MagicMock()
+    with patch("app.services.telephony._get_client", return_value=mock_client):
+        telephony.start_transcription("ctrl-1", language="en-US")
+    kwargs = mock_client.calls.actions.start_transcription.call_args[1]
+    assert kwargs["transcription_engine"] == "A"
+    cfg = kwargs["transcription_engine_config"]
+    assert cfg["language"] == "en"          # normalized to short code
+    assert cfg["interim_results"] is True
 
 
 def test_speak_text_ssml_payload_type():
