@@ -22,6 +22,11 @@ class NexusState(TypedDict):
 
     worker_progress: dict  # {agent_id: {"step": int, "checkpoints": list[str]}}
 
+    goal_id: str
+    parent_goal_id: str
+    deadline: str
+    success_criteria: str
+
 
 class WorkerState(TypedDict):
     task: str
