@@ -20,7 +20,7 @@ FastAPI (app/main.py)
     |         |                     |-- ceo_node → parse [DELEGATE:agent] tags
     |         |                     |-- fan-out → worker subgraphs (parallel)
     |         |                     |       worker_node → run_agent() → output_node
-    |         |                     |-- ceo_review_node → route_after_review
+    |         |                     |-- ceo_wrapup_node → END (terminal spoken wrap-up)
     |         |
     |         `-- target == worker → run_agent() direct + pipeline.process()
     |
@@ -30,7 +30,7 @@ FastAPI (app/main.py)
 ```
 
 **LangGraph graph** (`app/graph/nexus_graph.py`): `NexusState` flows through
-`ceo_node → [fan-out to worker subgraphs] → ceo_review_node → END|loop`.
+`ceo_node → [fan-out to worker subgraphs] → ceo_wrapup_node → END`.
 
 **Agents** (`app/agents/`): defined in `definitions.py`; executed via
 `runner.py` which chooses Claude CLI / Gemini API / tgpt per task type and quota.

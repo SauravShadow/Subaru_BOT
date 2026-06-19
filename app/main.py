@@ -27,7 +27,9 @@ STATIC_DIR = Path(__file__).parent / "static"
 async def lifespan(app: FastAPI):
     # DB + memory
     from app.services import memory as mem_svc
+    from app.services import goals as goal_store
     mem_svc.init_db()
+    goal_store.init_db()
 
     # Skills
     from app.skills import skill_loader

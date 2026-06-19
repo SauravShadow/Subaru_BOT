@@ -203,7 +203,9 @@ async def _run_and_stream(task: str, thread_id: str, model: str) -> None:
             {"task": task, "session_id": thread_id, "model": model,
              "source": "browser", "worker_results": [], "delegations": [],
              "artifacts": {}, "ceo_verdict": "approved", "revision_notes": "",
-             "ceo_response": "", "worker_progress": {}},
+             "ceo_response": "", "worker_progress": {},
+             "goal_id": "", "parent_goal_id": "", "deadline": "",
+             "success_criteria": ""},
             config,
             version="v2",
         ):

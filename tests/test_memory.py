@@ -126,3 +126,26 @@ def test_context_block_includes_shared_without_keyword(mem, monkeypatch):
     mem.save_memory("shared", "Always-on fact: prefer Engine B for calls", importance=0.9)
     block = runner._build_context_block("backend", "totally unrelated query about widgets")
     assert "Always-on fact" in block
+
+
+def test_save_memory_with_goal_id(mem):
+    mem.save_memory("ceo", "Picked Postgres for payments", goal_id="goal-123")
+    results = mem.get_memories_by_goal("goal-123")
+    assert any("Postgres" in r for r in results)
+
+
+def test_get_memories_by_goal_filters(mem):
+    mem.save_memory("ceo", "Belongs to goal A", goal_id="A")
+    mem.save_memory("ceo", "Belongs to goal B", goal_id="B")
+    mem.save_memory("ceo", "No goal at all")
+    a = mem.get_memories_by_goal("A")
+    assert any("goal A" in r for r in a)
+    assert not any("goal B" in r for r in a)
+    assert not any("No goal" in r for r in a)
+
+
+def test_save_memory_without_goal_still_works(mem):
+    # Backward compatibility — goal_id is optional.
+    mem.save_memory("ceo", "Plain memory, no goal")
+    results = mem.get_relevant_memories("ceo", "Plain memory")
+    assert any("Plain memory" in r for r in results)

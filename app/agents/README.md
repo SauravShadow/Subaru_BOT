@@ -202,4 +202,4 @@ No runner changes needed — `run_agent()` resolves the persona from `definition
 | Direct | `msg.agent == "<worker_id>"` in WebSocket | `ws_endpoint._run_direct()` |
 
 In the direct path: `_run_direct()` calls `run_agent()` then `pipeline.process()` on the result.
-No CEO delegation, no `ceo_review_node`, no graph state.
+No CEO delegation, no `ceo_wrapup_node`, no graph state.

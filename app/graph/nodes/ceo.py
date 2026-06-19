@@ -9,6 +9,7 @@ from app.agents.runner import run_claude_agent
 from app.graph.state import NexusState
 from app.graph import broadcast
 from app.output import pipeline
+from app.services import goals as goal_store
 
 logger = logging.getLogger(__name__)
 
@@ -29,6 +30,23 @@ def parse_delegations_from_response(text: str) -> list[dict]:
     ]
 
 
+def _build_goal_context() -> str:
+    """Compact list of active goals injected into CEO planning prompts."""
+    try:
+        active = goal_store.get_goals(status="active", limit=10)
+        if not active:
+            return ""
+        lines = []
+        for g in active:
+            deadline = g.get("deadline")
+            suffix = f" (due {deadline})" if deadline else ""
+            lines.append(f"  - {g.get('title', '')}{suffix}")
+        return "ACTIVE GOALS:\n" + "\n".join(lines) + "\n\n"
+    except Exception as exc:
+        logger.debug("goal context build failed: %s", exc)
+        return ""
+
+
 async def ceo_node(state: NexusState, config: RunnableConfig) -> dict:
     thread_id = config.get("configurable", {}).get("thread_id", "")
     model = config.get("configurable", {}).get("model", "claude")
@@ -37,6 +55,9 @@ async def ceo_node(state: NexusState, config: RunnableConfig) -> dict:
         await broadcast.send(thread_id, data)
 
     task = state["task"]
+    goal_context = _build_goal_context()
+    if goal_context:
+        task = f"{goal_context}{task}"
     if state.get("revision_notes"):
         task = f"{task}\n\n[REVISION REQUESTED]\n{state['revision_notes']}"
 

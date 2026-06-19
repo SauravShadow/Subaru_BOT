@@ -25,6 +25,7 @@ from app.services.self_heal import load_approvals, apply_approval, deny_approval
 from app.agents import tools as agent_tools
 from app.services import telephony
 from app.services import call_store
+from app.services import goals as goal_store
 from app.services.call_metrics import TurnTimer
 from app.agents.call_prep import cleanup_call_audio, quick_reply, _AUDIO_DIR
 
@@ -556,6 +557,14 @@ async def api_health():
     health["telephony"] = all([config.TELNYX_API_KEY, config.TELNYX_CONNECTION_ID,
                                config.TELNYX_PHONE_NUMBER])
     return health
+
+
+# ── Goals ──────────────────────────────────────────────────────────────────────
+
+@router.get("/api/goals")
+async def api_goals(status: str | None = None):
+    """Active or all persistent goals (status=active|done|... or omit for all)."""
+    return {"goals": goal_store.get_goals(status=status)}
 
 
 # ── Outbound call — user-initiated ─────────────────────────────────────────────
