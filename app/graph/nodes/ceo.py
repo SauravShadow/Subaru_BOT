@@ -34,16 +34,17 @@ def _build_goal_context() -> str:
     """Compact list of active goals injected into CEO planning prompts."""
     try:
         active = goal_store.get_goals(status="active", limit=10)
-    except Exception:
+        if not active:
+            return ""
+        lines = []
+        for g in active:
+            deadline = g.get("deadline")
+            suffix = f" (due {deadline})" if deadline else ""
+            lines.append(f"  - {g.get('title', '')}{suffix}")
+        return "ACTIVE GOALS:\n" + "\n".join(lines) + "\n\n"
+    except Exception as exc:
+        logger.debug("goal context build failed: %s", exc)
         return ""
-    if not active:
-        return ""
-    lines = []
-    for g in active:
-        deadline = g.get("deadline")
-        suffix = f" (due {deadline})" if deadline else ""
-        lines.append(f"  - {g['title']}{suffix}")
-    return "ACTIVE GOALS:\n" + "\n".join(lines) + "\n\n"
 
 
 async def ceo_node(state: NexusState, config: RunnableConfig) -> dict:
