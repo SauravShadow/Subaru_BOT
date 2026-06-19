@@ -45,3 +45,36 @@ def test_subtasks_roundtrip(store):
     gid = store.create_goal("With subtasks", subtasks=["a", "b", "c"])
     row = store.get_goal(gid)
     assert row["subtasks"] == ["a", "b", "c"]
+
+
+def test_save_and_get_outcome(store):
+    gid = store.create_goal("Deploy service")
+    store.save_outcome(
+        goal_id=gid,
+        task="Deploy on port 8080",
+        approach_taken="docker compose up",
+        duration_ms=4200,
+        success_score=0.3,
+        blockers=["port 8080 conflict"],
+    )
+    outs = store.get_outcomes(goal_id=gid)
+    assert len(outs) == 1
+    assert outs[0]["task"] == "Deploy on port 8080"
+    assert outs[0]["success_score"] == 0.3
+    assert outs[0]["blockers"] == ["port 8080 conflict"]
+
+
+def test_get_outcomes_filters_by_goal(store):
+    g1 = store.create_goal("G1")
+    g2 = store.create_goal("G2")
+    store.save_outcome(goal_id=g1, task="t1", success_score=0.9)
+    store.save_outcome(goal_id=g2, task="t2", success_score=0.5)
+    outs = store.get_outcomes(goal_id=g1)
+    assert len(outs) == 1
+    assert outs[0]["task"] == "t1"
+
+
+def test_save_outcome_without_goal(store):
+    store.save_outcome(task="orphan task", success_score=0.7)
+    outs = store.get_outcomes()
+    assert any(o["task"] == "orphan task" for o in outs)

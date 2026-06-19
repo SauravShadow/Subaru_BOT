@@ -101,3 +101,42 @@ def update_goal_status(goal_id: str, status: str, outcome_score: float | None = 
                 "UPDATE goals SET status=?, outcome_score=? WHERE goal_id=?",
                 (status, outcome_score, goal_id),
             )
+
+
+def save_outcome(
+    task: str,
+    *,
+    goal_id: str | None = None,
+    approach_taken: str | None = None,
+    duration_ms: int | None = None,
+    success_score: float | None = None,
+    blockers: list[str] | None = None,
+) -> None:
+    with _conn() as c:
+        c.execute(
+            "INSERT INTO goal_outcomes (goal_id, task, approach_taken, duration_ms,"
+            " success_score, blockers_json, created_at)"
+            " VALUES (?,?,?,?,?,?,?)",
+            (goal_id, task, approach_taken, duration_ms, success_score,
+             json.dumps(blockers or []), datetime.now().isoformat()),
+        )
+
+
+def _row_to_outcome(row: sqlite3.Row) -> dict:
+    d = dict(row)
+    d["blockers"] = json.loads(d.pop("blockers_json") or "[]")
+    return d
+
+
+def get_outcomes(goal_id: str | None = None, limit: int = 50) -> list[dict]:
+    with _conn() as c:
+        if goal_id:
+            rows = c.execute(
+                "SELECT * FROM goal_outcomes WHERE goal_id=? ORDER BY created_at DESC LIMIT ?",
+                (goal_id, limit),
+            ).fetchall()
+        else:
+            rows = c.execute(
+                "SELECT * FROM goal_outcomes ORDER BY created_at DESC LIMIT ?", (limit,)
+            ).fetchall()
+        return [_row_to_outcome(r) for r in rows]
