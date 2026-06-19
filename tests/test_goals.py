@@ -78,3 +78,10 @@ def test_save_outcome_without_goal(store):
     store.save_outcome(task="orphan task", success_score=0.7)
     outs = store.get_outcomes()
     assert any(o["task"] == "orphan task" for o in outs)
+
+
+def test_get_goals_fail_soft_on_missing_table(store):
+    import sqlite3
+    with sqlite3.connect(str(store.DB_PATH)) as c:
+        c.execute("DROP TABLE goals")
+    assert store.get_goals() == []

@@ -79,17 +79,21 @@ def get_goal(goal_id: str) -> dict | None:
 
 
 def get_goals(status: str | None = None, limit: int = 50) -> list[dict]:
-    with _conn() as c:
-        if status:
-            rows = c.execute(
-                "SELECT * FROM goals WHERE status=? ORDER BY created_at DESC LIMIT ?",
-                (status, limit),
-            ).fetchall()
-        else:
-            rows = c.execute(
-                "SELECT * FROM goals ORDER BY created_at DESC LIMIT ?", (limit,)
-            ).fetchall()
-        return [_row_to_goal(r) for r in rows]
+    try:
+        with _conn() as c:
+            if status:
+                rows = c.execute(
+                    "SELECT * FROM goals WHERE status=? ORDER BY created_at DESC LIMIT ?",
+                    (status, limit),
+                ).fetchall()
+            else:
+                rows = c.execute(
+                    "SELECT * FROM goals ORDER BY created_at DESC LIMIT ?", (limit,)
+                ).fetchall()
+            return [_row_to_goal(r) for r in rows]
+    except sqlite3.OperationalError as exc:
+        logger.warning("goals query failed: %s", exc)
+        return []
 
 
 def update_goal_status(goal_id: str, status: str, outcome_score: float | None = None) -> None:
