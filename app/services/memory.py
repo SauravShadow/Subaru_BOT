@@ -42,6 +42,10 @@ def init_db() -> None:
                 updated_at TEXT
             );
         """)
+        # Idempotent migration: add goal_id to pre-existing memories tables.
+        cols = {r["name"] for r in c.execute("PRAGMA table_info(memories)")}
+        if "goal_id" not in cols:
+            c.execute("ALTER TABLE memories ADD COLUMN goal_id TEXT")
 
 
 def save_memory(
@@ -49,13 +53,14 @@ def save_memory(
     content: str,
     mem_type: str = "conversation",
     importance: float = 0.5,
+    goal_id: str | None = None,
 ) -> None:
     now = datetime.now().isoformat()
     with _conn() as c:
         cur = c.execute(
-            "INSERT INTO memories (agent_id, mem_type, content, importance, created_at)"
-            " VALUES (?,?,?,?,?)",
-            (agent_id, mem_type, content, importance, now),
+            "INSERT INTO memories (agent_id, mem_type, content, importance, created_at, goal_id)"
+            " VALUES (?,?,?,?,?,?)",
+            (agent_id, mem_type, content, importance, now, goal_id),
         )
         c.execute(
             "INSERT INTO memories_fts (rowid, content, agent_id) VALUES (?,?,?)",
@@ -113,6 +118,23 @@ def get_shared_memories(limit: int = 3) -> list[str]:
             return [r["content"] for r in rows]
     except sqlite3.OperationalError as exc:
         logger.warning("shared memory query failed: %s", exc)
+        return []
+
+
+def get_memories_by_goal(goal_id: str, limit: int = 20) -> list[str]:
+    """All memories tagged with a goal_id, newest first — no keyword match needed."""
+    try:
+        with _conn() as c:
+            rows = c.execute("""
+                SELECT content
+                FROM   memories
+                WHERE  goal_id = ?
+                ORDER  BY created_at DESC
+                LIMIT  ?
+            """, (goal_id, limit)).fetchall()
+            return [r["content"] for r in rows]
+    except sqlite3.OperationalError as exc:
+        logger.warning("goal memory query failed: %s", exc)
         return []
 
 
