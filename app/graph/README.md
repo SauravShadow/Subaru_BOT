@@ -25,11 +25,10 @@ ceo_node          ← runs run_claude_agent("ceo", task), parses [DELEGATE:x] ta
 [backend] [frontend] [qa] [devops] [browser]   ← compiled worker subgraphs (parallel)
   |
   v
-ceo_review_node   ← reviews collected worker_results
+ceo_wrapup_node   ← spoken wrap-up over collected worker_results (terminal)
   |
-  | route_after_review()
-  |   → ceo_node   if verdict == "revise" | "delegate_more"
-  |   → END        if verdict == "approved" | "done"
+  v
+END
 ```
 
 **Known agents** (hard-coded in `_KNOWN_AGENTS`):
@@ -105,13 +104,12 @@ Only agents in `all_agents()` are accepted; unknown agent ids are silently dropp
 
 ---
 
-## CEO Review Node
+## CEO Wrap-up Node
 
-**File**: `app/graph/nodes/review.py` — `ceo_review_node(state, config)`
+**File**: `app/graph/nodes/wrapup.py` — `ceo_wrapup_node(state, config)`
 
-Runs a second Claude call to review the combined worker results.
-Sets `ceo_verdict` to one of: `"approved"`, `"revise"`, `"delegate_more"`, `"done"`.
-If `"revise"`, sets `revision_notes` and the graph loops back to `ceo_node`.
+Terminal node. Produces a spoken wrap-up over the collected `worker_results`,
+then ends the run. Returns `{"ceo_verdict": "done", "revision_notes": ""}`.
 
 ---
 
@@ -150,7 +148,7 @@ emails from `email_poller.py`. Not documented here — see `app/graph/email/`.
 **New worker agent**:
 1. Add agent id to `_KNOWN_AGENTS` in `nexus_graph.py`.
 2. `_get_worker_subgraph(agent_id)` auto-builds the subgraph from `make_worker_graph`.
-3. The graph wires `agent_id → ceo_review_node` automatically.
+3. The graph wires `agent_id → ceo_wrapup_node` automatically.
 4. Add the agent definition in `app/agents/definitions.py` (see app/agents/README.md).
 
 **New top-level node** (e.g. a parallel research step before CEO):
